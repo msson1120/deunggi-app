@@ -1,31 +1,6 @@
-
-def trim_after_reference_note(df):
-    import re
-    for i, row in df.iterrows():
-        row_text = "".join(str(cell) for cell in row)
-        normalized = re.sub(r"\s+", "", row_text)
-        if "참고사항" in normalized or "참고" in normalized or "비고" in normalized:
-            return df.iloc[:i]
-    return df
-
-def extract_identifier(df):
-    """
-    '고유번호' 이후 행에서 [토지] 또는 [건물]로 시작하는 행을 찾아서 반환.
-    예시: "[토지] 충청남도 서산시 대산읍 독곶리 69-2 대 555㎡"
-    """
-    for i in range(len(df)):
-        row = df.iloc[i]
-        row_text = " ".join(str(cell) for cell in row)
-        if "고유번호" in row_text:
-            for j in range(i+1, min(i+10, len(df))):
-                content = " ".join(str(cell) for cell in df.iloc[j])
-                if content.strip().startswith(("[토지]", "[건물]")):
-                    return content.strip()
-            break
-    return "알수없음"
-
 import streamlit as st
-import streamlit as st
+st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
+
 password = st.text_input('비밀번호를 입력하세요', type='password')
 if password != '1120':
     st.warning('올바른 비밀번호를 입력하세요.')
@@ -38,8 +13,27 @@ import re
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-st.title("📂 (주)건화 등기부등본 Excel 통합 분석기")
+def trim_after_reference_note(df):
+    for i, row in df.iterrows():
+        row_text = "".join(str(cell) for cell in row)
+        normalized = re.sub(r"\s+", "", row_text)
+        if "참고사항" in normalized or "참고" in normalized or "비고" in normalized:
+            return df.iloc[:i]
+    return df
 
+def extract_identifier(df):
+    for i in range(len(df)):
+        row = df.iloc[i]
+        row_text = " ".join(str(cell) for cell in row)
+        if "고유번호" in row_text:
+            for j in range(i+1, min(i+10, len(df))):
+                content = " ".join(str(cell) for cell in df.iloc[j])
+                if content.strip().startswith(("[토지]", "[건물]")):
+                    return content.strip()
+            break
+    return "알수없음"
+
+st.title("📂 (주)건화 등기부등본 Excel 통합 분석기")
 st.markdown("""
 [서비스 이용안내]
 - 등기사항전부증명서(열람용) Excel 문서가 지원됩니다.
@@ -175,3 +169,4 @@ if run_button and directory:
     wb.save(save_path)
     st.success("✅ 분석 완료! 다운로드 파일 생성됨")
     st.markdown(f"📥 [등기사항_통합_시트별구성.xlsx 다운로드]({save_path})")
+

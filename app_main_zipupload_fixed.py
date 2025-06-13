@@ -172,7 +172,8 @@ if run_button and uploaded_zip:
                 djg_list.append(djg_df)
             else:
                 djg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
-
+        except Exception as e:
+            pass  # 또는 logging.warning(...) 등으로 로깅만
     wb = Workbook()
     for sheetname, data in zip(
         ["1. 소유지분현황 (갑구)", "2. 소유권사항 (갑구)", "3. 저당권사항 (을구)"],

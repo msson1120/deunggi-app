@@ -1,20 +1,6 @@
 
-import streamlit as st
-st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
-
-password = st.text_input('비밀번호를 입력하세요', type='password')
-if password != '1120':
-    st.warning('올바른 비밀번호를 입력하세요.')
-    st.stop()
-
-import pandas as pd
-import os
-import glob
-import re
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-
 def trim_after_reference_note(df):
+    import re
     for i, row in df.iterrows():
         row_text = "".join(str(cell) for cell in row)
         normalized = re.sub(r"\s+", "", row_text)
@@ -23,6 +9,10 @@ def trim_after_reference_note(df):
     return df
 
 def extract_identifier(df):
+    """
+    '고유번호' 이후 행에서 [토지] 또는 [건물]로 시작하는 행을 찾아서 반환.
+    예시: "[토지] 충청남도 서산시 대산읍 독곶리 69-2 대 555㎡"
+    """
     for i in range(len(df)):
         row = df.iloc[i]
         row_text = " ".join(str(cell) for cell in row)
@@ -34,12 +24,22 @@ def extract_identifier(df):
             break
     return "알수없음"
 
-st.title("📂 (주)건화 등기부등본 Excel 통합 분석기")
+import streamlit as st
+import pandas as pd
+import os
+import glob
+import re
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+
+st.set_page_config(page_title="등기부등본 Excel 통합기")
+st.title("(주)건화 📂 등기부등본 Excel 통합 분석기")
+
 st.markdown("""
-[서비스 이용안내]
-- 등기사항전부증명서(열람용) Excel 문서가 지원됩니다.
-(Arcobat PRO를 통해 발급받은 PDF 문서를 Excel로 일괄 변환 가능합니다.)
-- 등기사항전부증명서 발급 시 주요 등기사항 요약 페이지를 포함해야 합니다.
+이 앱은 등기부등본 엑셀 파일들을 자동으로 분석하여
+- 항목별 시트로 저장된 Excel 파일
+- 모든 내용을 병합한 Excel 파일
+두 가지를 생성해줍니다.
 """)
 
 def keyword_match_partial(cell, keyword):
@@ -136,7 +136,6 @@ if run_button and directory:
                 szj_df.insert(0, "파일명", name)
                 szj_list.append(szj_df)
             else:
-                st.warning(f"{name} 파일에서 소유지분현황 데이터 없음")
                 szj_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "등기명의인"]))
 
             if has_syg:
@@ -144,7 +143,6 @@ if run_button and directory:
                 syg_df.insert(0, "파일명", name)
                 syg_list.append(syg_df)
             else:
-                st.warning(f"{name} 파일에서 소유권사항 데이터 없음")
                 syg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
 
             if has_djg:
@@ -153,7 +151,6 @@ if run_button and directory:
                 djg_df.insert(0, "파일명", name)
                 djg_list.append(djg_df)
             else:
-                st.warning(f"{name} 파일에서 저당권사항 데이터 없음")
                 djg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
 
         except Exception as e:
@@ -165,13 +162,9 @@ if run_button and directory:
         [szj_list, syg_list, djg_list]
     ):
         ws = wb.create_sheet(title=sheetname)
-        if data:
-            df = pd.concat(data, ignore_index=True)
-            for r in dataframe_to_rows(df, index=False, header=True):
-                ws.append(r)
-        else:
-            ws.append(["기록없음"])
-
+        df = pd.concat(data, ignore_index=True)
+        for r in dataframe_to_rows(df, index=False, header=True):
+            ws.append(r)
     wb.remove(wb["Sheet"])
     save_path = os.path.join(directory, "등기사항_통합_시트별구성.xlsx")
     wb.save(save_path)

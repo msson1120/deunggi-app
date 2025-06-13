@@ -15,7 +15,7 @@ if password != '1120':
     st.warning('올바른 비밀번호를 입력하세요.')
     st.stop()
 
-st.title("📦 (주)건화 등기부등본 일괄통합분석기")
+st.title("📦 (주)건화 등기부등본 통합분석기")
 st.markdown("""
 압축파일(.zip) 안의 폴더 구조와 관계없이 모든 엑셀 파일을 자동 분석합니다.
 """)
@@ -117,12 +117,17 @@ def extract_precise_named_cols(section, col_keywords):
     return pd.DataFrame(rows)
 def merge_same_row_if_amount_separated(df):
     df = df.copy()
-    for i in range(len(df)):
+    for i in range(len(df) - 1):
         row = df.iloc[i]
         main = str(row["주요등기사항"])
+
         if "채권최고액" in main:
-            row_text = " ".join(str(cell) for cell in row if pd.notnull(cell))
-            match = re.search(r"금[\d,]+원", row_text)
+            # 현재 행과 다음 행 모두 병합 텍스트 구성
+            combined_row = list(row.values) + list(df.iloc[i + 1].values)
+            combined_text = " ".join(str(x) for x in combined_row if pd.notnull(x))
+
+            # 금액 패턴 추출
+            match = re.search(r"금[\d,]+원", combined_text)
             if match and match.group(0) not in main:
                 df.at[i, "주요등기사항"] = main + " " + match.group(0)
     return df

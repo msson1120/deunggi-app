@@ -2,7 +2,7 @@ import streamlit as st
 st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
 
 password = st.text_input('비밀번호를 입력하세요', type='password')
-if password != '1120':
+if password != '126791':
     st.warning('올바른 비밀번호를 입력하세요.')
     st.stop()
 

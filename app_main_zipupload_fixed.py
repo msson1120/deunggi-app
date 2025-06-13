@@ -15,7 +15,7 @@ if password != '1120':
     st.warning('올바른 비밀번호를 입력하세요.')
     st.stop()
 
-st.title("📦 폴더 포함 zip 파일 업로드 분석기")
+st.title("📦 (주)건화 등기부등본 일괄통합분석기")
 st.markdown("""
 압축파일(.zip) 안의 폴더 구조와 관계없이 모든 엑셀 파일을 자동 분석합니다.
 """)
@@ -145,7 +145,6 @@ if run_button and uploaded_zip:
                 szj_df.insert(0, "파일명", name)
                 szj_list.append(szj_df)
             else:
-                st.warning(f"{name} 파일에서 소유지분현황 데이터 없음")
                 szj_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "등기명의인"]))
 
             if has_syg:
@@ -153,22 +152,20 @@ if run_button and uploaded_zip:
                 syg_df.insert(0, "파일명", name)
                 syg_list.append(syg_df)
             else:
-                st.warning(f"{name} 파일에서 소유권사항 데이터 없음")
                 syg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
 
             if has_djg:
                 djg_df = extract_precise_named_cols(djg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
                 for i in range(len(djg_df) - 1):
                     cell = str(djg_df.iloc[i]["주요등기사항"])
-                    next_cell = str(djg_df.iloc[i + 1]["주요등기사항"])
-                    if "채권최고액" in cell and "금" in next_cell:
-                        combined = cell + " " + next_cell
+                    next_row_all_text = " ".join(str(x) for x in djg_df.iloc[i + 1] if pd.notnull(x))
+                    if "채권최고액" in cell and "금" in next_row_all_text:
+                        combined = cell + " " + next_row_all_text
                         djg_df.at[i, "주요등기사항"] = combined
                 djg_df = trim_after_reference_note(djg_df)
                 djg_df.insert(0, "파일명", name)
                 djg_list.append(djg_df)
             else:
-                st.warning(f"{name} 파일에서 저당권사항 데이터 없음")
                 djg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
 
         except Exception as e:

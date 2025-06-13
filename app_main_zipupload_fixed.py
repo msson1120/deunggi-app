@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import tempfile
@@ -51,6 +50,81 @@ def keyword_match_exact(cell, keyword):
     if pd.isnull(cell): return False
     return re.sub(r"\s+", "", str(cell)) == re.sub(r"\s+", "", keyword)
 
+def merge_split_headers(header_row):
+    """분리된 헤더를 병합하는 함수"""
+    merged_row = header_row.copy()
+    
+    # 주요 키워드들의 분리 패턴 정의
+    split_patterns = {
+        "주소": ["주", "소"],
+        "등기명의인": ["등기", "명의인"],
+        "주민등록번호": ["주민", "등록번호"],
+        "최종지분": ["최종", "지분"],
+        "순위번호": ["순위", "번호"]
+    }
+    
+    for target_keyword, split_parts in split_patterns.items():
+        # 분리된 부분들을 찾아서 병합
+        found_indices = []
+        for part in split_parts:
+            for idx, cell_value in header_row.items():
+                cell_str = str(cell_value).strip()
+                if cell_str == part:
+                    found_indices.append(idx)
+                    break
+        
+        # 연속된 인덱스인지 확인하고 병합
+        if len(found_indices) == len(split_parts):
+            # 인덱스가 연속적인지 또는 하나씩 떨어져 있는지 확인
+            if all(found_indices[i+1] - found_indices[i] <= 2 for i in range(len(found_indices)-1)):
+                # 첫 번째 위치에 병합된 값 저장
+                merged_row[found_indices[0]] = target_keyword
+                # 나머지 위치는 빈 값으로 설정
+                for idx in found_indices[1:]:
+                    merged_row[idx] = ""
+    
+    return merged_row
+
+def enhanced_keyword_match(header_row, keyword, max_distance=2):
+    """인접한 셀들을 고려한 키워드 매칭"""
+    # 먼저 일반적인 매칭 시도
+    for idx, cell in header_row.items():
+        if keyword_match_partial(cell, keyword):
+            return idx
+    
+    # 분리된 키워드 매칭 시도
+    keyword_chars = list(keyword.replace(" ", ""))
+    if len(keyword_chars) <= 1:
+        return None
+    
+    for start_idx, cell in header_row.items():
+        if str(cell).strip() == keyword_chars[0]:
+            # 첫 글자가 매칭되면 다음 글자들을 인접 셀에서 찾기
+            current_text = str(cell).strip()
+            current_idx = start_idx
+            
+            for i in range(1, len(keyword_chars)):
+                found_next = False
+                # 최대 max_distance까지 떨어진 셀에서 다음 글자 찾기
+                for offset in range(1, max_distance + 1):
+                    next_idx = current_idx + offset
+                    if next_idx in header_row:
+                        next_cell = str(header_row[next_idx]).strip()
+                        if next_cell == keyword_chars[i]:
+                            current_text += next_cell
+                            current_idx = next_idx
+                            found_next = True
+                            break
+                
+                if not found_next:
+                    break
+            
+            # 전체 키워드가 매칭되었는지 확인
+            if current_text == keyword.replace(" ", ""):
+                return start_idx
+    
+    return None
+
 def extract_section_range(df, start_kw, end_kw_list, match_fn):
     df = df.fillna("")
     df.columns = range(df.shape[1])
@@ -70,18 +144,39 @@ def extract_section_range(df, start_kw, end_kw_list, match_fn):
     is_empty = section.replace("", pd.NA).dropna(how="all").empty
     return section if not is_empty else pd.DataFrame([["기록없음"]]), not is_empty
 
+# 소유지분현황(갑구)에서 필요한 열을 추출
 def extract_named_cols(section, col_keywords):
+    if section.empty:
+        return pd.DataFrame([["기록없음"]])
+    
     header_row = section.iloc[0]
+    # 헤더 병합 전처리
+    merged_header = merge_split_headers(header_row)
+    
     col_map = {}
     for target in col_keywords:
-        for idx, val in header_row.items():
-            if keyword_match_partial(val, target):
-                col_map[target] = idx
-                break
+        # 향상된 키워드 매칭 사용
+        col_idx = enhanced_keyword_match(merged_header, target)
+        if col_idx is not None:
+            col_map[target] = col_idx
+        else:
+            # 기존 방식으로 재시도
+            for idx, val in merged_header.items():
+                if keyword_match_partial(val, target):
+                    col_map[target] = idx
+                    break
+    
     rows = []
     for i in range(1, len(section)):
         row = section.iloc[i]
-        rows.append({key: row.get(col_map.get(key), "") for key in col_keywords})
+        row_dict = {}
+        for key in col_keywords:
+            if key in col_map:
+                row_dict[key] = row.get(col_map[key], "")
+            else:
+                row_dict[key] = ""
+        rows.append(row_dict)
+    
     return pd.DataFrame(rows)
 
 def find_keyword_header(section, col_keywords, max_search_rows=15):
@@ -99,6 +194,7 @@ def find_col_index(header_row, keyword):
             return idx
     return None
 
+# 소유권사항 (갑구)와 에서 필요한 열 추출
 def extract_precise_named_cols(section, col_keywords):
     header_idx, header_row = find_keyword_header(section, col_keywords)
     if header_idx is None:

@@ -122,7 +122,7 @@ def merge_same_row_if_amount_separated(df):
         main = str(row["주요등기사항"])
         if "채권최고액" in main:
             row_text = " ".join(str(cell) for cell in row if pd.notnull(cell))
-            match = re.search(r"금[\\d,]+원", row_text)
+            match = re.search(r"금[\d,]+원", row_text)
             if match and match.group(0) not in main:
                 df.at[i, "주요등기사항"] = main + " " + match.group(0)
     return df
@@ -172,9 +172,6 @@ if run_button and uploaded_zip:
                 djg_list.append(djg_df)
             else:
                 djg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
-
-        except Exception as e:
-            st.warning(f"{os.path.basename(path)} 처리 중 오류 발생: {e}")
 
     wb = Workbook()
     for sheetname, data in zip(

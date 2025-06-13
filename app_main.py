@@ -1,3 +1,4 @@
+
 import streamlit as st
 st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
 
@@ -135,6 +136,7 @@ if run_button and directory:
                 szj_df.insert(0, "파일명", name)
                 szj_list.append(szj_df)
             else:
+                st.warning(f"{name} 파일에서 소유지분현황 데이터 없음")
                 szj_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "등기명의인"]))
 
             if has_syg:
@@ -142,6 +144,7 @@ if run_button and directory:
                 syg_df.insert(0, "파일명", name)
                 syg_list.append(syg_df)
             else:
+                st.warning(f"{name} 파일에서 소유권사항 데이터 없음")
                 syg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
 
             if has_djg:
@@ -150,6 +153,7 @@ if run_button and directory:
                 djg_df.insert(0, "파일명", name)
                 djg_list.append(djg_df)
             else:
+                st.warning(f"{name} 파일에서 저당권사항 데이터 없음")
                 djg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["파일명", "순위번호"]))
 
         except Exception as e:
@@ -161,9 +165,13 @@ if run_button and directory:
         [szj_list, syg_list, djg_list]
     ):
         ws = wb.create_sheet(title=sheetname)
-        df = pd.concat(data, ignore_index=True)
-        for r in dataframe_to_rows(df, index=False, header=True):
-            ws.append(r)
+        if data:
+            df = pd.concat(data, ignore_index=True)
+            for r in dataframe_to_rows(df, index=False, header=True):
+                ws.append(r)
+        else:
+            ws.append(["기록없음"])
+
     wb.remove(wb["Sheet"])
     save_path = os.path.join(directory, "등기사항_통합_시트별구성.xlsx")
     wb.save(save_path)

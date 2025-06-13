@@ -158,12 +158,12 @@ if run_button and uploaded_zip:
 
             if has_djg:
                 djg_df = extract_precise_named_cols(djg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
-                    for i in range(len(djg_df) - 1):
-                        cell = str(djg_df.iloc[i]["주요등기사항"])
-                        next_cell = str(djg_df.iloc[i + 1]["주요등기사항"])
-                        if "채권최고액" in cell and "금" in next_cell:
-                            combined = cell + " " + next_cell
-                            djg_df.at[i, "주요등기사항"] = combined
+                for i in range(len(djg_df) - 1):
+                    cell = str(djg_df.iloc[i]["주요등기사항"])
+                    next_cell = str(djg_df.iloc[i + 1]["주요등기사항"])
+                    if "채권최고액" in cell and "금" in next_cell:
+                        combined = cell + " " + next_cell
+                        djg_df.at[i, "주요등기사항"] = combined
                 djg_df = trim_after_reference_note(djg_df)
                 djg_df.insert(0, "파일명", name)
                 djg_list.append(djg_df)

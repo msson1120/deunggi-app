@@ -115,7 +115,17 @@ def extract_precise_named_cols(section, col_keywords):
         row_dict = {key: row[col_map[key]] if col_map[key] in row else "" for key in col_map}
         rows.append(row_dict)
     return pd.DataFrame(rows)
-
+def merge_same_row_if_amount_separated(df):
+    df = df.copy()
+    for i in range(len(df)):
+        row = df.iloc[i]
+        main = str(row["주요등기사항"])
+        if "채권최고액" in main:
+            row_text = " ".join(str(cell) for cell in row if pd.notnull(cell))
+            match = re.search(r"금[\\d,]+원", row_text)
+            if match and match.group(0) not in main:
+                df.at[i, "주요등기사항"] = main + " " + match.group(0)
+    return df
 if run_button and uploaded_zip:
     temp_dir = tempfile.mkdtemp()
     szj_list, syg_list, djg_list = [], [], []
@@ -156,17 +166,7 @@ if run_button and uploaded_zip:
 
             if has_djg:
                 djg_df = extract_precise_named_cols(djg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
-                for i in range(len(djg_df) - 1):
-                    cell = str(djg_df.iloc[i]["주요등기사항"])
-                    if "채권최고액" in cell:
-                        next_row = djg_df.iloc[i + 1]
-                        next_text = " ".join(str(x) for x in next_row if pd.notnull(x))
-
-                        # '금 123,456,789원' 형식만 추출
-                        match = re.search(r"금[\\d,]+원", next_text)
-                        if match:
-                            combined = cell + " " + match.group(0)
-                            djg_df.at[i, "주요등기사항"] = combined
+                djg_df = merge_same_row_if_amount_separated(djg_df)  # ✅ 여기에 병합 함수 호출 추가
                 djg_df = trim_after_reference_note(djg_df)
                 djg_df.insert(0, "파일명", name)
                 djg_list.append(djg_df)

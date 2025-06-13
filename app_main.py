@@ -2,7 +2,7 @@ import streamlit as st
 st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
 
 password = st.text_input('비밀번호를 입력하세요', type='password')
-if password != '126791':
+if password != '1120':
     st.warning('올바른 비밀번호를 입력하세요.')
     st.stop()
 
@@ -169,4 +169,3 @@ if run_button and directory:
     wb.save(save_path)
     st.success("✅ 분석 완료! 다운로드 파일 생성됨")
     st.markdown(f"📥 [등기사항_통합_시트별구성.xlsx 다운로드]({save_path})")
-

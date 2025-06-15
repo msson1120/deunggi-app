@@ -12,13 +12,18 @@ from openpyxl.utils import get_column_letter
 st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
 
 password = st.text_input('비밀번호를 입력하세요', type='password')
-if password != '1220':
+if password != '126791':
     st.warning('올바른 비밀번호를 입력하세요.')
     st.stop()
 
 st.title("📦 (주)건화 등기부등본 통합분석기")
 st.markdown("""
-압축파일(.zip) 안의 폴더 구조와 관계없이 모든 엑셀 파일을 자동 분석합니다.
+### 서비스 이용 안내
+- **등기사항전부증명서(열람용)** Excel 파일만 지원됩니다.  
+- 발급 시 **주요 등기사항 요약 페이지**를 반드시 포함해야 합니다.  
+- Acrobat Pro를 이용해 등기부등본 PDF를 Excel로 변환한 후, 해당 파일들을 **ZIP**으로 압축해 업로드하세요.  
+- 반드시 정식 발급된 열람용(요약 페이지 포함) 문서를 사용해 주세요.  
+- 등기부 특성상 통합 과정에서 일부 주요 내용이 누락될 수 있으므로, **수기 검토**가 필요합니다.  
 """)
 
 uploaded_zip = st.file_uploader("📁 .zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])

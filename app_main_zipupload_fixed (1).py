@@ -1031,8 +1031,15 @@ if run_button and uploaded_zip:
             if sheetname == "3. 저당권사항 (을구)":
                 if "순위번호" in df.columns:
                     df = df.rename(columns={"순위번호": "기록유무"})
-                # 등기목적 열을 삭제하지 않고, 등기목적도 함께 표현
-                # 등기목적(근저당권 설정, 지상권설정 등) 컬럼이 그대로 남아있게 됨
+                # 기록유무가 '기록없음'이 아닌 경우 등기목적을 기록유무에 표시
+                if "등기목적" in df.columns and "기록유무" in df.columns:
+                    df["기록유무"] = df.apply(
+                        lambda row: row["등기목적"] if row["기록유무"] != "기록없음" and str(row["등기목적"]).strip() else row["기록유무"],
+                        axis=1
+                    )
+                # 등기목적 컬럼은 숨기고 싶으면 아래 주석 해제
+                # if "등기목적" in df.columns:
+                #     df = df.drop(columns=["등기목적"])
             
             for r in dataframe_to_rows(df, index=False, header=True):
                 ws.append(r)

@@ -627,23 +627,19 @@ def extract_land_area(df):
 
 def check_san_in_address(address):
     """
-    토지주소에 '산'이 있는지 확인하는 함수
-    '산'이 숫자 앞에 있으면 'O', 아니면 'X'
+    토지주소에 '산'이 숫자 앞에 있으면 '산', 아니면 빈칸 반환
     """
     if not isinstance(address, str):
-        return 'X'
-    
-    # 주소에서 마지막 부분을 가져오기
+        return ''
     parts = address.split()
     if not parts:
-        return 'X'
-    
-    # 주소의 마지막 부분에서 '산' 다음에 숫자가 오는 패턴 확인
+        return ''
     import re
     for part in parts:
-        if re.search(r'산\d+', part) or re.search(r'산\s*\d+', part):
-            return 'O'
-    return 'X'
+        # '산'이 숫자 바로 앞에 있거나, '산'과 숫자 사이에 공백이 있어도 허용
+        if re.search(r'^산\s*\d+', part):
+            return '산'
+    return ''
 
 def extract_right_holders(df):
     """
@@ -1035,8 +1031,8 @@ if run_button and uploaded_zip:
             if sheetname == "3. 저당권사항 (을구)":
                 if "순위번호" in df.columns:
                     df = df.rename(columns={"순위번호": "기록유무"})
-                if "등기목적" in df.columns:
-                    df = df.drop(columns=["등기목적"])
+                # 등기목적 열을 삭제하지 않고, 등기목적도 함께 표현
+                # 등기목적(근저당권 설정, 지상권설정 등) 컬럼이 그대로 남아있게 됨
             
             for r in dataframe_to_rows(df, index=False, header=True):
                 ws.append(r)

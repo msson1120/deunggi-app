@@ -12,18 +12,13 @@ from openpyxl.utils import get_column_letter
 st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
 
 password = st.text_input('비밀번호를 입력하세요', type='password')
-if password != '126791':
+if password != '1220':
     st.warning('올바른 비밀번호를 입력하세요.')
     st.stop()
 
-st.title("🧾 (주)건화 | 등기부등본 자동분석기")
+st.title("📦 (주)건화 등기부등본 통합분석기")
 st.markdown("""
-### 서비스 이용 안내
-- **등기사항전부증명서(열람용)** Excel 파일만 지원됩니다.  
-- 발급 시 **주요 등기사항 요약 페이지**를 반드시 포함해야 합니다.  
-- Acrobat Pro를 이용해 등기부등본 PDF를 Excel로 변환한 후, 해당 파일들을 **ZIP**으로 압축해 업로드하세요.  
-- 반드시 정식 발급된 열람용(요약 페이지 포함) 문서를 사용해 주세요.  
-- 등기부 특성상 통합 과정에서 일부 주요 내용이 누락될 수 있으므로, **원본대조 검토**가 필요합니다.  
+압축파일(.zip) 안의 폴더 구조와 관계없이 모든 엑셀 파일을 자동 분석합니다.
 """)
 
 uploaded_zip = st.file_uploader("📁 .zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])
@@ -32,7 +27,7 @@ run_button = st.button("분석 시작")
 def merge_adjacent_cells(row_series, max_gap=3):
     """
     인접한 셀들을 병합하여 하나의 의미있는 단위로 만드는 함수
-    얇은 선으로 나뉜 셀들을 통합
+    데이터 행에서는 더 신중하게 병합
     """
     merged_row = row_series.copy()
     row_dict = row_series.to_dict()
@@ -40,7 +35,11 @@ def merge_adjacent_cells(row_series, max_gap=3):
     # 빈 셀이 아닌 셀들의 인덱스를 찾기
     non_empty_indices = [idx for idx, val in row_dict.items() if str(val).strip()]
     
-    # 연속된 셀들을 그룹화
+    # 데이터가 너무 적거나 많으면 병합하지 않음 (헤더가 아닌 경우)
+    if len(non_empty_indices) < 2 or len(non_empty_indices) > 10:
+        return merged_row
+    
+    # 연속된 셀들을 그룹화 (더 엄격한 조건)
     groups = []
     current_group = []
     
@@ -48,8 +47,8 @@ def merge_adjacent_cells(row_series, max_gap=3):
         if not current_group:
             current_group = [idx]
         else:
-            # 이전 인덱스와의 거리가 max_gap 이하면 같은 그룹
-            if idx - current_group[-1] <= max_gap:
+            # 이전 인덱스와의 거리가 2 이하면 같은 그룹 (더 엄격하게)
+            if idx - current_group[-1] <= 2:
                 current_group.append(idx)
             else:
                 # 새로운 그룹 시작
@@ -59,9 +58,9 @@ def merge_adjacent_cells(row_series, max_gap=3):
     if current_group:
         groups.append(current_group)
     
-    # 각 그룹 내의 셀들을 병합
+    # 각 그룹 내의 셀들을 병합 (더 신중하게)
     for group in groups:
-        if len(group) > 1:
+        if len(group) > 1 and len(group) <= 3:  # 너무 많은 셀은 병합하지 않음
             # 그룹 내 모든 값을 연결
             merged_value = ""
             for idx in group:
@@ -80,18 +79,23 @@ def merge_adjacent_cells(row_series, max_gap=3):
     
     return merged_row
 
-def merge_dataframe_cells(df):
+def merge_dataframe_cells(df, is_header_row=False):
     """
-    데이터프레임 전체에 셀 병합 로직 적용
+    데이터프레임에 셀 병합 로직 적용
+    헤더 행과 데이터 행을 구분하여 처리
     """
     if df.empty:
         return df
     
     merged_df = df.copy()
     
-    # 각 행에 대해 셀 병합 적용
-    for i in range(len(merged_df)):
-        merged_df.iloc[i] = merge_adjacent_cells(merged_df.iloc[i])
+    # 첫 번째 행은 헤더로 가정하고 더 관대하게 병합
+    if len(merged_df) > 0:
+        merged_df.iloc[0] = merge_adjacent_cells(merged_df.iloc[0], max_gap=3)
+    
+    # 나머지 행들은 데이터 행으로 더 엄격하게 병합
+    for i in range(1, len(merged_df)):
+        merged_df.iloc[i] = merge_adjacent_cells(merged_df.iloc[i], max_gap=2)
     
     return merged_df
 
@@ -180,10 +184,10 @@ def keyword_match_exact(cell, keyword):
 
 def merge_split_headers(header_row):
     """분리된 헤더를 병합하는 함수 - 개선된 버전"""
-    # 먼저 인접 셀 병합 적용
-    merged_row = merge_adjacent_cells(header_row)
+    # 셀 병합을 하지 않고 원본 헤더를 그대로 사용
+    merged_row = header_row.copy()
     
-    # 기존 특정 키워드 병합 로직도 유지
+    # 기존 특정 키워드 병합 로직만 적용 (인접 셀 병합은 제외)
     split_patterns = {
         "주소": ["주", "소"],
         "등기명의인": ["등기", "명의인"],
@@ -206,7 +210,7 @@ def merge_split_headers(header_row):
                     break
         
         if len(found_indices) == len(split_parts):
-            if all(found_indices[i+1] - found_indices[i] <= 3 for i in range(len(found_indices)-1)):
+            if all(found_indices[i+1] - found_indices[i] <= 2 for i in range(len(found_indices)-1)):
                 merged_row[found_indices[0]] = target_keyword
                 for idx in found_indices[1:]:
                     merged_row[idx] = ""
@@ -214,13 +218,18 @@ def merge_split_headers(header_row):
     return merged_row
 
 def enhanced_keyword_match(header_row, keyword, max_distance=2):
-    """인접한 셀들을 고려한 키워드 매칭"""
-    # 먼저 일반적인 매칭 시도
+    """인접한 셀들을 고려한 키워드 매칭 - 개선된 버전"""
+    # 먼저 정확한 매칭 시도
+    for idx, cell in header_row.items():
+        if keyword_match_exact(cell, keyword):
+            return idx
+    
+    # 부분 매칭 시도
     for idx, cell in header_row.items():
         if keyword_match_partial(cell, keyword):
             return idx
     
-    # 분리된 키워드 매칭 시도
+    # 분리된 키워드 매칭 시도 (더 엄격하게)
     keyword_chars = list(keyword.replace(" ", ""))
     if len(keyword_chars) <= 1:
         return None
@@ -277,7 +286,7 @@ def extract_named_cols(section, col_keywords):
     if section.empty:
         return pd.DataFrame([["기록없음"]])
     
-    # 전체 섹션에 셀 병합 적용
+    # 셀 병합 적용 (헤더와 데이터 구분)
     section = merge_dataframe_cells(section)
     
     header_row = section.iloc[0]
@@ -288,28 +297,26 @@ def extract_named_cols(section, col_keywords):
         col_idx = enhanced_keyword_match(merged_header, target)
         if col_idx is not None:
             col_map[target] = col_idx
-        else:
-            for idx, val in merged_header.items():
-                if keyword_match_partial(val, target):
-                    col_map[target] = idx
-                    break
 
-    # 최종지분 처리 로직은 기존과 동일하게 유지
+    # 최종지분 특별 처리 (기존 로직 유지하되 더 정확하게)
     if "최종지분" not in col_map:
         idx_최종 = None
         idx_지분 = None
         for idx, val in merged_header.items():
-            if str(val).strip() == "최종":
+            val_str = str(val).strip()
+            if val_str == "최종":
                 idx_최종 = idx
-            if str(val).strip() == "지분":
+            elif val_str == "지분":
                 idx_지분 = idx
-        if idx_최종 is not None and idx_지분 is not None and abs(idx_최종 - idx_지분) <= 3:
+        
+        if idx_최종 is not None and idx_지분 is not None and abs(idx_최종 - idx_지분) <= 2:
             col_map["최종지분"] = (min(idx_최종, idx_지분), max(idx_최종, idx_지분))
 
     rows = []
     for i in range(1, len(section)):
         row = section.iloc[i]
         row_dict = {}
+        
         for key in col_keywords:
             if key == "최종지분":
                 if isinstance(col_map.get("최종지분"), tuple):
@@ -323,32 +330,60 @@ def extract_named_cols(section, col_keywords):
                 elif isinstance(col_map.get("최종지분"), int):
                     idx = col_map["최종지분"]
                     val1 = str(row.get(idx, "")).strip()
+                    # 인접 셀 확인은 헤더가 비어있을 때만
                     val2 = ""
                     if (idx + 1) in row and not str(merged_header.get(idx + 1, "")).strip():
                         val2 = str(row.get(idx + 1, "")).strip()
                     if val1 and val2:
                         row_dict[key] = val1 + val2
                     else:
-                        row_dict[key] = val1 or val2
+                        row_dict[key] = val1
                 else:
                     row_dict[key] = ""
             elif key in col_map:
-                row_dict[key] = row.get(col_map[key], "")
+                col_idx = col_map[key]
+                cell_value = row.get(col_idx, "")
+                row_dict[key] = str(cell_value).strip() if pd.notna(cell_value) else ""
             else:
                 row_dict[key] = ""
         
-        # 등기명의인과 주민번호 분리 처리
-        if "등기명의인" in row_dict and "(주민)등록번호" in col_keywords:
+        # 데이터 정리: 등기명의인에 다른 정보가 섞여있는 경우 분리
+        if "등기명의인" in row_dict:
             owner_text = str(row_dict["등기명의인"]).strip()
             
-            # 주민등록번호가 등기명의인 필드에 있는 경우
-            jumin = extract_jumin_number(owner_text)
-            if jumin:
-                # 주민번호는 주민등록번호 필드에 넣고, 등기명의인에서는 제거
-                row_dict["(주민)등록번호"] = jumin
-                row_dict["등기명의인"] = owner_text.replace(jumin, "").strip()
-        
+            # 주민등록번호 분리
+            if "(주민)등록번호" in col_keywords:
+                jumin = extract_jumin_number(owner_text)
+                if jumin:
+                    row_dict["(주민)등록번호"] = jumin
+                    owner_text = owner_text.replace(jumin, "").strip()
+            
+            # 지분 정보 분리
+            if "최종지분" in col_keywords and not row_dict.get("최종지분"):
+                extracted_jibun = extract_jibun(owner_text)
+                if extracted_jibun:
+                    row_dict["최종지분"] = extracted_jibun
+                    owner_text = owner_text.replace(extracted_jibun, "").strip()
+            
+            # 주소 정보 분리
+            if "주소" in col_keywords and not row_dict.get("주소"):
+                if is_address_pattern(owner_text):
+                    # 이름과 주소를 분리하려고 시도
+                    parts = owner_text.split()
+                    if len(parts) > 1:
+                        # 첫 번째 부분이 이름이고 나머지가 주소일 가능성
+                        possible_name = parts[0]
+                        possible_address = " ".join(parts[1:])
+                        if is_address_pattern(possible_address):
+                            row_dict["등기명의인"] = possible_name.replace(" ", "")  # 이름 띄어쓰기 제거
+                            row_dict["주소"] = possible_address
+                            continue
+            
+            # 정리된 등기명의인 설정 (띄어쓰기 제거)
+            row_dict["등기명의인"] = owner_text.replace(" ", "")
+            
         rows.append(row_dict)
+    
     return pd.DataFrame(rows)
 
 def find_keyword_header(section, col_keywords, max_search_rows=15):
@@ -368,18 +403,24 @@ def find_col_index(header_row, keyword):
 
 # 소유권사항 (갑구)와 에서 필요한 열 추출
 def extract_precise_named_cols(section, col_keywords):
-    # 전체 섹션에 셀 병합 적용
-    section = merge_dataframe_cells(section)
+    # 셀 병합을 하지 않고 원본 섹션 사용
+    section = section.copy()
+    # always use first row as header
+    header_row = merge_split_headers(section.iloc[0])
+    start_row = 1
     
-    header_idx, header_row = find_keyword_header(section, col_keywords)
-    if header_idx is None:
-        header_row = merge_split_headers(section.iloc[0])
-        start_row = 1
-    else:
-        header_row = merge_split_headers(header_row)
-        start_row = header_idx + 1
-    
-    col_map = {key: find_col_index(header_row, key) for key in col_keywords if find_col_index(header_row, key) is not None}
+    col_map = {}
+    for key in col_keywords:
+        idx = find_col_index(header_row, key)
+        # fallback to partial match if exact failed
+        if idx is None:
+            for i, val in header_row.items():
+                if keyword_match_partial(val, key):
+                    idx = i
+                    break
+        if idx is not None:
+            col_map[key] = idx
+
     if not col_map:
        # 모든 컬럼에 대해 빈 값을 생성하고, 첫번째 컬럼에만 "기록없음" 표시
        result = pd.DataFrame(columns=col_keywords)
@@ -390,7 +431,18 @@ def extract_precise_named_cols(section, col_keywords):
     rows = []
     for i in range(start_row, len(section)):
         row = section.iloc[i]
-        row_dict = {key: row[col_map[key]] if col_map[key] in row else "" for key in col_map}
+        row_dict = {}
+        for key in col_keywords:
+            if key in col_map:
+                # 해당 열의 정확한 인덱스에서만 값 가져오기
+                col_idx = col_map[key]
+                if col_idx < len(row):
+                    cell_value = row.iloc[col_idx]
+                    row_dict[key] = str(cell_value).strip() if pd.notna(cell_value) else ""
+                else:
+                    row_dict[key] = ""
+            else:
+                row_dict[key] = ""
         rows.append(row_dict)
     return pd.DataFrame(rows)
 def merge_same_row_if_amount_separated(df):
@@ -548,45 +600,83 @@ def extract_land_type(df):
     """
     land_type = ""
     # 더 구체적이고 긴 단어가 먼저 검사되도록 정렬
-    land_types = ["공장용지", "잡종지", "염전", "도로", "임야", "유지", "하천", "구거", "제방", "양어장"]
+    land_types = ["공장용지", "잡종지", "염전", "도로", "임야", "유지", "하천", "구거", "제방", "양어장","전", "답", "대","광천지","수도용지","제방","염전","과수원","목장용지","학교용지","종교용지","주차장","주유소","창고용지","철도용지","공원","묘지","체육용지","유원지","사적지","잡종지"]
     
-    # 파일 식별자에서 지목 정보 추출 시도
+    # 1. 주요 등기사항 요약 섹션에서 토지 지목 추출 시도 (최우선)
+    summary_row_idx = None
+    for i in range(len(df)):
+        row_text = " ".join(str(cell) for cell in df.iloc[i] if pd.notna(cell))
+        if "주요 등기사항 요약" in row_text or "주요등기사항요약" in re.sub(r'\s+', '', row_text):
+            summary_row_idx = i
+            break
+    
+    if summary_row_idx is not None:
+        # 요약 섹션 이후 토지 정보 검색
+        for i in range(summary_row_idx + 1, min(summary_row_idx + 10, len(df))):
+            row_text = " ".join(str(cell) for cell in df.iloc[i] if pd.notna(cell))
+            if "[토지]" in row_text:
+                # 지목 정보를 더 정확하게 추출
+                for lt in land_types:
+                    # [토지] 다음에 오는 지목 정보 찾기
+                    pattern = r'\[토지\][^가-힣]*' + lt + r'(?:\s|$|[^가-힣])'
+                    if re.search(pattern, row_text):
+                        return lt
+                    # 간단한 패턴도 확인
+                    if lt in row_text and "[토지]" in row_text:
+                        # 주변 문맥 확인하여 실제 지목인지 판단
+                        lt_index = row_text.find(lt)
+                        land_index = row_text.find("[토지]")
+                        if abs(lt_index - land_index) < 50:  # 50자 이내에 있으면 관련성 있음
+                            return lt
+    
+    # 2. 파일 식별자에서 지목 정보 추출 시도
     identifier = extract_identifier(df)
     if "[토지]" in identifier:
         # 정확한 매칭을 위한 패턴: 앞뒤로 공백이나 문장 끝인 경우만 매칭
         for lt in land_types:
-            pattern = r'(^|\s)' + lt + r'($|\s)'
+            pattern = r'(^|\s|[^가-힣])' + lt + r'($|\s|[^가-힣])'
             if re.search(pattern, identifier):
                 land_type = lt
                 break
                 
-        # 정확한 매칭이 안 된 경우 부분 매칭으로 시도
+        # 정확한 매칭이 안 된 경우 부분 매칭으로 시도 (단, 더 엄격하게)
         if not land_type:
             for lt in land_types:
-                if lt in identifier:
-                    land_type = lt
-                    break
+                if lt in identifier and "[토지]" in identifier:
+                    # 지목이 [토지] 근처에 있는지 확인
+                    lt_index = identifier.find(lt)
+                    land_index = identifier.find("[토지]")
+                    if abs(lt_index - land_index) < 30:  # 30자 이내
+                        land_type = lt
+                        break
     
-    # 데이터프레임 전체에서 찾기
+    # 3. 데이터프레임 전체에서 찾기 (더 신중하게)
     if not land_type:
         for i in range(len(df)):
             row_text = " ".join(str(cell) for cell in df.iloc[i] if pd.notna(cell))
             
-            # 정확한 매칭을 먼저 시도
-            for lt in land_types:
-                pattern = r'(^|\s)' + lt + r'($|\s)'
-                if re.search(pattern, row_text):
-                    land_type = lt
-                    return land_type
-            
-            # 정확한 매칭이 안 되면 부분 매칭 시도
-            if not land_type:
+            # [토지] 키워드가 있는 행 우선 검색
+            if "[토지]" in row_text:
+                for lt in land_types:
+                    pattern = r'(^|\s|[^가-힣])' + lt + r'($|\s|[^가-힣])'
+                    if re.search(pattern, row_text):
+                        return lt
+                
+                # 정확한 매칭이 안 되면 부분 매칭 시도 (단, [토지] 근처에서만)
                 for lt in land_types:
                     if lt in row_text:
-                        land_type = lt
-                        return land_type
+                        lt_index = row_text.find(lt)
+                        land_index = row_text.find("[토지]")
+                        if abs(lt_index - land_index) < 30:
+                            return lt
+            
+            # 지목과 면적이 함께 나오는 패턴 찾기
+            for lt in land_types:
+                if lt in row_text and ("㎡" in row_text or "m²" in row_text):
+                    # 지목과 면적이 같은 행에 있으면 실제 지목일 가능성 높음
+                    return lt
     
-    return land_type
+    return land_type if land_type else ""
 
 def extract_land_area(df):
     """
@@ -596,6 +686,24 @@ def extract_land_area(df):
     area = ""
     land_types = ["염전", "도로", "임야", "유지", "답", "전", "대", "공장용지", "잡종지", "하천", "구거", "제방", "양어장"]
     
+    # 주요 등기사항 요약 섹션에서 면적 추출 시도
+    summary_row_idx = None
+    for i in range(len(df)):
+        row_text = " ".join(str(cell) for cell in df.iloc[i] if pd.notna(cell))
+        if "주요 등기사항 요약" in row_text or "주요등기사항요약" in re.sub(r'\s+', '', row_text):
+            summary_row_idx = i
+            break
+    
+    if summary_row_idx is not None:
+        # 요약 섹션 이후 토지 정보 검색
+        for i in range(summary_row_idx + 1, min(summary_row_idx + 10, len(df))):
+            row_text = " ".join(str(cell) for cell in df.iloc[i] if pd.notna(cell))
+            if "[토지]" in row_text:
+                area_match = re.search(r'(\d[\d,\.]*)\s*[㎡m²]', row_text)
+                if area_match:
+                    return area_match.group(1).replace(',', '')
+    
+    # 이하 기존 추출 방법 (위 방법이 실패한 경우 실행)
     # 파일 식별자에서 면적 추출 시도
     identifier = extract_identifier(df)
     if "[토지]" in identifier:
@@ -627,17 +735,21 @@ def extract_land_area(df):
 
 def check_san_in_address(address):
     """
-    토지주소에 '산'이 숫자 앞에 있으면 '산', 아니면 빈칸 반환
+    토지주소에 '산'이 있는지 확인하는 함수
+    '산'이 숫자 앞에 있으면 'O', 아니면 'X'
     """
     if not isinstance(address, str):
         return ''
+    
+    # 주소에서 마지막 부분을 가져오기
     parts = address.split()
     if not parts:
         return ''
+    
+    # 주소의 마지막 부분에서 '산' 다음에 숫자가 오는 패턴 확인
     import re
     for part in parts:
-        # '산'이 숫자 바로 앞에 있거나, '산'과 숫자 사이에 공백이 있어도 허용
-        if re.search(r'^산\s*\d+', part):
+        if re.search(r'산\d+', part) or re.search(r'산\s*\d+', part):
             return '산'
     return ''
 
@@ -852,15 +964,15 @@ if run_button and uploaded_zip:
                     if pd.notna(row["등기명의인"]):
                         ownership_type, clean_name = extract_ownership_type(str(row["등기명의인"]))
                         szj_df.at[idx, "소유구분"] = ownership_type
-                        szj_df.at[idx, "등기명의인"] = clean_name
+                        szj_df.at[idx, "등기명의인"] = clean_name.replace(" ", "")  # 등기명의인 띄어쓰기 제거
                     
                     # 등기명의인에서 주민번호 패턴이 있으면 분리
                     if pd.notna(row["등기명의인"]):
                         jumin = extract_jumin_number(str(row["등기명의인"]))
                         if jumin:
                             szj_df.at[idx, "(주민)등록번호"] = jumin
-                            szj_df.at[idx, "등기명의인"] = str(row["등기명의인"]).replace(jumin, "").strip()
-                    
+                            szj_df.at[idx, "등기명의인"] = str(row["등기명의인"]).replace(jumin, "").strip().replace(" ", "")  # 띄어쓰기 제거
+
                     # 최종지분과 주소 추가 정리
                     address_text = str(row["주소"]).strip()
                     jibun_text = str(row["최종지분"]).strip()
@@ -986,7 +1098,7 @@ if run_button and uploaded_zip:
                                            columns=["토지주소", "순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자", "근저당권자", "지상권자"]))
 
         except Exception as e:
-            pass  # 또는 logging.warning(…) 등으로 로깅만
+            pass  # 또는 logging.warning(...) 등으로 로깅만
     wb = Workbook()
     for sheetname, data in zip(
         ["1. 소유지분현황 (갑구)", "2. 소유권사항 (갑구)", "3. 저당권사항 (을구)"],
@@ -1024,22 +1136,17 @@ if run_button and uploaded_zip:
                 style_header_row(ws)
         elif data:
             df = pd.concat(data, ignore_index=True)
-            # Make sure any index column is not included in the output
-            df.reset_index(drop=True, inplace=True)  # Reset and drop any existing index
+            df.reset_index(drop=True, inplace=True)
             
-            # 세 번째 시트(저당권사항)인 경우 "순위번호" 헤더를 "기록유무"로 변경하고 "등기목적" 열 삭제
             if sheetname == "3. 저당권사항 (을구)":
-                if "순위번호" in df.columns:
+                if "순위번호" in df.columns and "등기목적" in df.columns:
                     df = df.rename(columns={"순위번호": "기록유무"})
-                # 기록유무가 '기록없음'이 아닌 경우 등기목적을 기록유무에 표시
-                if "등기목적" in df.columns and "기록유무" in df.columns:
-                    df["기록유무"] = df.apply(
-                        lambda row: row["등기목적"] if row["기록유무"] != "기록없음" and str(row["등기목적"]).strip() else row["기록유무"],
-                        axis=1
+                    # 기록유무에 등기목적 값만 표시 (등기목적이 비어있으면 "기록없음")
+                    df["기록유무"] = df["등기목적"].apply(
+                        lambda x: x if pd.notna(x) and str(x).strip() and str(x).strip() != "기록없음"
+                        else "기록없음"
                     )
-                # 등기목적 컬럼은 숨기고 싶으면 아래 주석 해제
-                # if "등기목적" in df.columns:
-                #     df = df.drop(columns=["등기목적"])
+                    df = df.drop(columns=["등기목적"])
             
             for r in dataframe_to_rows(df, index=False, header=True):
                 ws.append(r)

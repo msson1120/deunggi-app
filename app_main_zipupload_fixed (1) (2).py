@@ -980,7 +980,7 @@ if run_button and uploaded_zip:
             xls = pd.ExcelFile(path)
             df = xls.parse(xls.sheet_names[0]).fillna("")
             name = extract_identifier(df)
-
+            
             # 토지면적과 지목 정보 추출
             land_area = extract_land_area(df)
             land_type = extract_land_type(df)
@@ -991,23 +991,211 @@ if run_button and uploaded_zip:
 
             if has_szj:
                 szj_df = extract_named_cols(szj_sec, ["등기명의인", "(주민)등록번호", "최종지분", "주소", "순위번호"])
+                
+                # 소유구분 열 추가
+                szj_df["소유구분"] = ""
+                
+                # 데이터 후처리 - 등기명의인과 주민등록번호 정리
+                for idx, row in szj_df.iterrows():
+                    # 소유구분 추출
+                    if pd.notna(row["등기명의인"]):
+                        ownership_type, clean_name = extract_ownership_type(str(row["등기명의인"]))
+                        szj_df.at[idx, "소유구분"] = ownership_type
+                        szj_df.at[idx, "등기명의인"] = clean_name.replace(" ", "")  # 등기명의인 띄어쓰기 제거
+                    
+                    # 등기명의인에서 주민번호 패턴이 있으면 분리
+                    if pd.notna(row["등기명의인"]):
+                        jumin = extract_jumin_number(str(row["등기명의인"]))
+                        if jumin:
+                            szj_df.at[idx, "(주민)등록번호"] = jumin
+                            szj_df.at[idx, "등기명의인"] = str(row["등기명의인"]).replace(jumin, "").strip().replace(" ", "")  # 띄어쓰기 제거
+
+                    # 최종지분과 주소 추가 정리
+                    address_text = str(row["주소"]).strip()
+                    jibun_text = str(row["최종지분"]).strip()
+                    
+                    # 주소에서 단독소유 또는 지분 패턴 찾기
+                    if pd.notna(row["주소"]) and is_jibun_pattern(address_text):
+                        jibun_in_address = extract_jibun(address_text)
+                        if jibun_in_address:
+                            # 최종지분이 비어있거나, 주소에서 발견한 지분이 더 정확해 보이는 경우
+                            if not jibun_text or len(jibun_in_address) > len(jibun_text):
+                                szj_df.at[idx, "최종지분"] = jibun_in_address
+                            # 주소에서는 지분 정보 제거
+                            szj_df.at[idx, "주소"] = address_text.replace(jibun_in_address, "").strip()
+                    
+                    # 최종지분에 주소 패턴 찾기
+                    if pd.notna(row["최종지분"]) and is_address_pattern(jibun_text):
+                        # 주소 필드가 비어있거나 최종지분의 텍스트가 더 길면(상세 주소일 가능성)
+                        if not address_text or (len(jibun_text) > len(address_text)):
+                            szj_df.at[idx, "주소"] = jibun_text
+                            szj_df.at[idx, "최종지분"] = ""
+                
+                # 마지막 검증 - 단독소유 확인
+                for idx, row in szj_df.iterrows():
+                    address_text = str(row["주소"]).strip()
+                    if "단독" in address_text and "단독소유" not in str(row["최종지분"]):
+                        # 단독 텍스트가 주소에 있고 최종지분에 없으면 이동
+                        szj_df.at[idx, "최종지분"] = "단독소유"
+                        # 주소에서는 '단독' 또는 '단독소유' 제거
+                        szj_df.at[idx, "주소"] = re.sub(r'단독(?:소유)?', '', address_text).strip()
+                
+                # 최종지분에서 주소 정보 제거하기
+                for idx, row in szj_df.iterrows():
+                    jibun_text = str(row["최종지분"]).strip()
+                    
+                    # 최종지분에서 지분 패턴 추출
+                    if jibun_text and pd.notna(row["최종지분"]):
+                        if "단독소유" in jibun_text or "단독" in jibun_text and len(jibun_text) < 10:
+                            # 단독소유는 그대로 유지
+                            szj_df.at[idx, "최종지분"] = "단독소유"
+                        else:
+                            # 지분 패턴만 추출
+                            extracted_jibun = extract_jibun(jibun_text)
+                            if extracted_jibun:
+                                szj_df.at[idx, "최종지분"] = extracted_jibun
+                            else:
+                                # 주소 패턴 확인 후 주소라면 해당 필드를 비움
+                                if is_address_pattern(jibun_text):
+                                    if str(row["주소"]).strip() == "":
+                                        szj_df.at[idx, "주소"] = jibun_text
+                                    szj_df.at[idx, "최종지분"] = ""
+                
+                # 토지면적 열 추가
+                szj_df["지목"] = land_type      # 지목 열 추가
+                szj_df["토지면적"] = land_area
+                
+                # 소유면적 계산 및 열 추가
+                szj_df["지분면적"] = None
+                for idx, row in szj_df.iterrows():
+                    try:
+                        jibun_decimal = convert_jibun_to_decimal(row["최종지분"])
+                        if jibun_decimal is not None and pd.notna(row["토지면적"]) and row["토지면적"]:
+                            land_area_value = float(str(row["토지면적"]).replace(',', ''))
+                            ownership_area = land_area_value * jibun_decimal
+                            szj_df.at[idx, "지분면적"] = f"{ownership_area:.4f}"
+                    except Exception as e:
+                        pass  # 변환 중 오류 발생시 None 값 유지
+                
+                # 최종지분 수치화 열 추가
+                szj_df["최종지분 수치화"] = None
+                for idx, row in szj_df.iterrows():
+                    try:
+                        jibun_decimal = convert_jibun_to_decimal(row["최종지분"])
+                        if jibun_decimal is not None:
+                            szj_df.at[idx, "최종지분 수치화"] = jibun_decimal
+                    except Exception as e:
+                        pass  # 변환 중 오류 발생시 None 값 유지
+                
+                # 열 순서 재배치
                 szj_df.insert(0, "토지주소", name)
+                columns = ["토지주소", "등기명의인", "소유구분", "(주민)등록번호", "주소", "순위번호", "최종지분", "최종지분 수치화", "지목", "토지면적", "지분면적"]
+                szj_df = szj_df[columns]
+                szj_df["그룹정보"] = "있음"  # 그룹 헤더를 사용할 데이터 플래그
                 szj_list.append(szj_df)
+            else:
+                # "기록없음" 케이스에도 동일한 컬럼 구조 유지
+                szj_list.append(pd.DataFrame([[name, "기록없음", "", "", "", "", "", "", land_type, land_area, "", "없음"]], 
+                                             columns=["토지주소", "등기명의인", "소유구분", "(주민)등록번호", "주소", "순위번호", "최종지분", "최종지분 수치화", "지목", "토지면적", "지분면적", "그룹정보"]))
 
-            wb = Workbook()
-            for sheetname, data in zip(
-                ["1. 소유지분현황 (갑구)", "2. 소유권사항 (갑구)", "3. 저당권사항 (을구)"],
-                [szj_list, syg_list, djg_list]
-            ):
-                ws = wb.create_sheet(title=sheetname)
-                if data:
-                    df = pd.concat(data, ignore_index=True)
-                    for r in dataframe_to_rows(df, index=False, header=True):
-                        ws.append(r)
-                    apply_borders_based_on_land_address(ws)
+            if has_syg:
+                syg_df = extract_precise_named_cols(syg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
+                syg_df.insert(0, "토지주소", name)
+                syg_list.append(syg_df)
+            else:
+                syg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["토지주소", "순위번호"]))
 
-            wb.remove(wb["Sheet"])
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                wb.save(tmp.name)
-                st.success("✅ 분석 완료! 다운로드 버튼을 클릭하세요.")
-                st.download_button("📥 결과 다운로드", data=open(tmp.name, "rb"), file_name="등기사항_통합_시트별구성.xlsx")
+            if has_djg:
+                djg_df = extract_precise_named_cols(djg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
+                
+                # 빈 행 제거 - 빈 문자열을 NA로 변환 후 모든 값이 NA인 행 제거
+                djg_df = djg_df.replace('', pd.NA)
+                djg_df = djg_df.dropna(how='all')
+                
+                # 공백만 있는 행도 제거 (문자열을 trim한 후 빈 문자열인지 확인)
+                mask = ~djg_df.astype(str).apply(lambda row: row.str.strip().eq('').all(), axis=1)
+                djg_df = djg_df[mask].reset_index(drop=True)
+                
+                # 빈 값을 다시 빈 문자열로 변환
+                djg_df = djg_df.fillna('')
+                
+                # "대상소유자" 컬럼에서 모든 띄어쓰기 제거
+                if "대상소유자" in djg_df.columns:
+                    djg_df["대상소유자"] = djg_df["대상소유자"].astype(str).str.replace(" ", "")
+                
+                djg_df = merge_same_row_if_amount_separated(djg_df)
+                djg_df = trim_after_reference_note(djg_df)
+                djg_df = extract_right_holders(djg_df)
+                djg_df.insert(0, "토지주소", name)
+                
+                djg_list.append(djg_df)
+            else:
+                # 빈 데이터프레임에도 모든 열 포함 - 기록유무 열 제거
+                djg_list.append(pd.DataFrame([[name, "기록없음", "", "", "", "", "", ""]], 
+                                           columns=["토지주소", "순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자", "근저당권자", "지상권자"]))
+
+        except Exception as e:
+            pass  # 또는 logging.warning(...) 등으로 로깅만
+    wb = Workbook()
+    for sheetname, data in zip(
+        ["1. 소유지분현황 (갑구)", "2. 소유권사항 (갑구)", "3. 저당권사항 (을구)"],
+        [szj_list, syg_list, djg_list]
+    ):
+        ws = wb.create_sheet(title=sheetname)
+        if data and sheetname == "1. 소유지분현황 (갑구)":
+            df = pd.concat(data, ignore_index=True)
+            
+            # "산" 열 추가
+            df["산"] = df["토지주소"].apply(check_san_in_address)
+            
+            # 열 순서 재배치 - "토지주소" 다음에 "산" 위치
+            cols = df.columns.tolist()
+            cols.remove("산")
+            idx = cols.index("토지주소")
+            cols.insert(idx + 1, "산")
+            df = df[cols]
+            
+            # 소유지분현황(갑구) 시트에는 그룹 헤더 적용
+            if any(df["그룹정보"] == "있음"):
+                # 그룹 구조 정의 - "산" 열 추가
+                group_structure = {
+                    "토지주소": ["토지주소", "산"],
+                    "소유자": ["등기명의인", "소유구분", "(주민)등록번호", "주소", "순위번호"],
+                    "토지": ["최종지분", "최종지분 수치화", "지목", "토지면적", "지분면적"]
+                }
+                df = df.drop(columns=["그룹정보"])  # 그룹정보 열 제거
+                create_grouped_headers(ws, df, group_structure)
+            else:
+                df = df.drop(columns=["그룹정보"])  # 그룹정보 열 제거
+                for r in dataframe_to_rows(df, index=False, header=True):
+                    ws.append(r)
+                # 헤더 행 스타일 적용
+                style_header_row(ws)
+        elif data:
+            df = pd.concat(data, ignore_index=True)
+            df.reset_index(drop=True, inplace=True)
+            
+            if sheetname == "3. 저당권사항 (을구)":
+                if "순위번호" in df.columns and "등기목적" in df.columns:
+                    df = df.rename(columns={"순위번호": "기록유무"})
+                    # 기록유무에 등기목적 값만 표시 (등기목적이 비어있으면 "기록없음")
+                    df["기록유무"] = df["등기목적"].apply(
+                        lambda x: x if pd.notna(x) and str(x).strip() and str(x).strip() != "기록없음"
+                        else "기록없음"
+                    )
+                    df = df.drop(columns=["등기목적"])
+            
+            for r in dataframe_to_rows(df, index=False, header=True):
+                ws.append(r)
+            # Headers styling
+            style_header_row(ws)
+        else:
+            ws.append(["기록없음"])
+            # 데이터가 없는 경우에도 헤더 스타일 적용
+            style_header_row(ws)
+
+    wb.remove(wb["Sheet"])
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        wb.save(tmp.name)
+        st.success("✅ 분석 완료! 다운로드 버튼을 클릭하세요.")
+        st.download_button("📥 결과 다운로드", data=open(tmp.name, "rb"), file_name="등기사항_통합_시트별구성.xlsx")

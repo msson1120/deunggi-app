@@ -842,6 +842,29 @@ def style_header_row(ws):
         adjusted_width = min(max(max_length + 2, 10), 50)
         ws.column_dimensions[col_letter].width = adjusted_width
 
+def apply_top_border_on_change(ws, key_column_letter='A', start_row=3):
+    """
+    A열 값을 기준으로 이전 행과 값이 다를 때 현재 행에 Top Border 추가
+    기본적으로 3행부터 적용 (헤더 2줄 고려)
+    """
+    thin_top = Side(style='thin', color='000000')
+
+    previous_value = None
+    for row in range(start_row, ws.max_row + 1):
+        cell = ws[f"{key_column_letter}{row}"]
+        current_value = str(cell.value).strip() if cell.value is not None else ""
+
+        if current_value != previous_value:
+            for col in range(1, ws.max_column + 1):
+                target = ws.cell(row=row, column=col)
+                target.border = Border(
+                    top=thin_top,
+                    bottom=target.border.bottom,
+                    left=target.border.left,
+                    right=target.border.right
+                )
+        previous_value = current_value
+
 def create_grouped_headers(ws, df, group_structure):
     """
     워크시트에 그룹화된 헤더를 생성하는 함수
@@ -1165,6 +1188,7 @@ if run_button and uploaded_zip:
                 }
                 df = df.drop(columns=["그룹정보"])  # 그룹정보 열 제거
                 create_grouped_headers(ws, df, group_structure)
+                apply_top_border_on_change(ws, key_column_letter='A', start_row=3)
             else:
                 df = df.drop(columns=["그룹정보"])  # 그룹정보 열 제거
                 for r in dataframe_to_rows(df, index=False, header=True):
@@ -1189,6 +1213,7 @@ if run_button and uploaded_zip:
                 ws.append(r)
             # Headers styling
             style_header_row(ws)
+            apply_top_border_on_change(ws, key_column_letter='A', start_row=2)
         else:
             ws.append(["기록없음"])
             # 데이터가 없는 경우에도 헤더 스타일 적용

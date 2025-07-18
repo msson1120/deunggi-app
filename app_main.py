@@ -1240,23 +1240,29 @@ if run_button and uploaded_zip:
     wb.remove(wb["Sheet"])
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         wb.save(tmp.name)
-        st.success("✅ 분석 완료! 아래에서 결과 파일을 다운로드하세요.")
-        st.download_button("📥 통합 엑셀 다운로드", data=open(tmp.name, "rb"), file_name="등기사항_통합_시트별구성.xlsx")
+        excel_result_path = tmp.name
 
-    # 2. PDF ZIP 처리 및 결과 다운로드 UI
+    # 2. PDF ZIP 처리 (있을 때만)
+    pdf_result_path = None
     if uploaded_pdf_zip:
-        with st.spinner("PDF ZIP 처리 중..."):
-            temp_pdf_dir = tempfile.mkdtemp()
-            temp_pdf_zip_path = os.path.join(temp_pdf_dir, "input_pdf.zip")
-            with open(temp_pdf_zip_path, "wb") as f:
-                f.write(uploaded_pdf_zip.read())
-            extract_folder = os.path.join(temp_pdf_dir, "extracted")
-            os.makedirs(extract_folder, exist_ok=True)
-            result_zip_path = os.path.join(temp_pdf_dir, "processed_result_pdf.zip")
-            extract_and_process_pdf_zip(temp_pdf_zip_path, extract_folder, result_zip_path)
-            st.success("✅ PDF 파일명 일괄변경 및 결과 ZIP 생성 완료!")
-            with open(result_zip_path, "rb") as f:
-                st.download_button("📥 PDF 결과 ZIP 다운로드", data=f, file_name="PDF_파일명_일괄변경_결과.zip")
+        temp_pdf_dir = tempfile.mkdtemp()
+        temp_pdf_zip_path = os.path.join(temp_pdf_dir, "input_pdf.zip")
+        with open(temp_pdf_zip_path, "wb") as f:
+            f.write(uploaded_pdf_zip.read())
+        extract_folder = os.path.join(temp_pdf_dir, "extracted")
+        os.makedirs(extract_folder, exist_ok=True)
+        pdf_result_path = os.path.join(temp_pdf_dir, "processed_result_pdf.zip")
+        extract_and_process_pdf_zip(temp_pdf_zip_path, extract_folder, pdf_result_path)
 
-elif run_button and (not uploaded_zip or not uploaded_pdf_zip):
-    st.warning("엑셀 ZIP과 PDF ZIP 파일을 모두 업로드해야 분석이 가능합니다.")
+    # 3. 통합 결과 ZIP 생성 및 다운로드 버튼
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as final_zip:
+        with zipfile.ZipFile(final_zip.name, 'w') as z:
+            z.write(excel_result_path, arcname="등기사항_통합_시트별구성.xlsx")
+            if pdf_result_path and os.path.exists(pdf_result_path):
+                z.write(pdf_result_path, arcname="PDF_파일명_일괄변경_결과.zip")
+        st.success("✅ 분석 완료! 아래에서 통합 결과 파일을 다운로드하세요.")
+        with open(final_zip.name, "rb") as f:
+            st.download_button("📥 통합 결과 ZIP 다운로드 (엑셀+PDF)", data=f, file_name="통합_결과.zip")
+
+elif run_button and (not uploaded_zip):
+    st.warning("엑셀 ZIP 파일을 업로드해야 분석이 가능합니다.")

@@ -28,9 +28,9 @@ st.markdown("""
 """)
 
 # 업로드창 2개로 분리 (엑셀 ZIP, PDF ZIP)
-uploaded_zip = st.file_uploader("📁 .zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])
+uploaded_zip = st.file_uploader("📈 EXCEL.zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])
 # PDF ZIP 업로드창 추가
-uploaded_pdf_zip = st.file_uploader("📄 PDF ZIP 파일을 업로드하세요 (내부에 .pdf 파일 포함)", type=["zip"], key="pdf_zip")
+uploaded_pdf_zip = st.file_uploader("📄 PDF.zip 파일을 업로드하세요 (내부에 .pdf 파일 포함)", type=["zip"], key="pdf_zip")
 run_button = st.button("분석 시작")
 
 # 경로 설정 (임시폴더 사용)

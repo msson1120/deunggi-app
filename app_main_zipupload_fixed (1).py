@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from PyPDF2 import PdfReader
 
 st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
 
@@ -17,6 +18,16 @@ if password != '126791':
     st.stop()
 
 st.title("🧾 (주)건화 등기부등본 통합분석기")
+
+# PDF 매뉴얼 토글
+with st.expander("📖 등기부등본 자동정리 프로그램 매뉴얼 보기", expanded=False):
+    st.markdown("[매뉴얼 PDF 직접 다운로드](https://raw.githubusercontent.com/msson1120/deunggi-app/main/%EB%93%B1%EA%B8%B0%EB%B6%80%EB%93%B1%EB%B3%B8%EC%9E%90%EB%8F%99%EC%A0%95%EB%A6%AC%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8_Manual.pdf)")
+    st.components.v1.iframe(
+        "https://docs.google.com/gview?url=https://raw.githubusercontent.com/msson1120/deunggi-app/main/%EB%93%B1%EA%B8%B0%EB%B6%80%EB%93%B1%EB%B3%B8%EC%9E%90%EB%8F%99%EC%A0%95%EB%A6%AC%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8_Manual.pdf&embedded=true",
+        height=600,
+        width="100%"
+    )
+
 st.markdown("""
 ### 서비스 이용 안내
 - **등기사항전부증명서(열람용)** Excel 파일만 지원됩니다.
@@ -26,8 +37,54 @@ st.markdown("""
 - 등기부 특성상 통합 과정에서 일부 주요 내용이 누락될 수 있으므로, **원본대조 검토**가 필요합니다.
 """)
 
-uploaded_zip = st.file_uploader("📁 .zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])
+# 업로드창 2개로 분리 (엑셀 ZIP, PDF ZIP)
+uploaded_zip = st.file_uploader("📈 EXCEL.zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])
+# PDF ZIP 업로드창 추가
+uploaded_pdf_zip = st.file_uploader("📄 PDF.zip 파일을 업로드하세요 (내부에 .pdf 파일 포함)", type=["zip"], key="pdf_zip")
 run_button = st.button("분석 시작")
+
+# 경로 설정 (임시폴더 사용)
+upload_folder = tempfile.mkdtemp()
+output_folder = tempfile.mkdtemp()
+
+# 주소 추출 정규표현식 패턴
+pattern = re.compile(r'\[토지\]\s*(충청남도\s*서산시\s*대산읍\s*[가-힣]+리)\s*(\d+(-\d+)?)')
+
+def process_pdf_files(folder_path):
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith(".pdf"):
+            full_path = os.path.join(folder_path, filename)
+            reader = PdfReader(full_path)
+            first_page_text = reader.pages[0].extract_text()
+
+            match = pattern.search(first_page_text)
+            if match:
+                address = match.group(1).replace(" ", "")  # 공백 제거
+                lot_no = match.group(2)
+                new_filename = f"{address}_{lot_no}.pdf"
+                new_path = os.path.join(folder_path, new_filename)
+
+                # 파일명 중복 방지
+                if not os.path.exists(new_path):
+                    os.rename(full_path, new_path)
+                else:
+                    pass  # 이미 존재하면 skip
+            else:
+                pass  # 주소 추출 실패
+
+def extract_and_process_pdf_zip(zip_file, extract_to, output_zip):
+    # 압축 해제
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        zip_ref.extractall(extract_to)
+    # PDF 파일 처리
+    process_pdf_files(extract_to)
+    # 결과 압축파일 생성
+    with zipfile.ZipFile(output_zip, 'w') as zip_out:
+        for root, _, files in os.walk(extract_to):
+            for file in files:
+                full_path = os.path.join(root, file)
+                arcname = os.path.relpath(full_path, extract_to)
+                zip_out.write(full_path, arcname)
 
 def merge_adjacent_cells(row_series, max_gap=3):
     """
@@ -842,6 +899,29 @@ def style_header_row(ws):
         adjusted_width = min(max(max_length + 2, 10), 50)
         ws.column_dimensions[col_letter].width = adjusted_width
 
+def apply_top_border_on_change(ws, key_column_letter='A', start_row=3):
+    """
+    A열 값을 기준으로 이전 행과 값이 다를 때 현재 행에 Top Border 추가
+    기본적으로 3행부터 적용 (헤더 2줄 고려)
+    """
+    thin_top = Side(style='thin', color='000000')
+
+    previous_value = None
+    for row in range(start_row, ws.max_row + 1):
+        cell = ws[f"{key_column_letter}{row}"]
+        current_value = str(cell.value).strip() if cell.value is not None else ""
+
+        if current_value != previous_value:
+            for col in range(1, ws.max_column + 1):
+                target = ws.cell(row=row, column=col)
+                target.border = Border(
+                    top=thin_top,
+                    bottom=target.border.bottom,
+                    left=target.border.left,
+                    right=target.border.right
+                )
+        previous_value = current_value
+
 def create_grouped_headers(ws, df, group_structure):
     """
     워크시트에 그룹화된 헤더를 생성하는 함수
@@ -929,60 +1009,74 @@ def create_grouped_headers(ws, df, group_structure):
         adjusted_width = min(max(max_length + 2, 10), 50)
         ws.column_dimensions[col_letter].width = adjusted_width
 
+def apply_borders_based_on_land_address(ws):
+    """
+    같은 토지주소인 경우 테두리를 생략하고,
+    토지주소가 달라지는 경우 해당 열 전체에 위아래 테두리를 추가.
+    """
+    thin_border = Border(
+        top=Side(style='thin', color='000000'),
+        bottom=Side(style='thin', color='000000')
+    )
+
+    # 토지주소 열의 인덱스 찾기
+    land_address_col = None
+    for col in ws.iter_cols(min_row=1, max_row=1):
+        for cell in col:
+            if cell.value == "토지주소":
+                land_address_col = cell.column
+                break
+        if land_address_col:
+            break
+
+    if not land_address_col:
+        return  # 토지주소 열이 없으면 종료
+
+    previous_address = None
+    for row in ws.iter_rows(min_row=2):
+        current_address = row[land_address_col - 1].value
+        if current_address != previous_address:
+            for cell in row:
+                cell.border = thin_border
+        previous_address = current_address
+
+# 기존 코드에 적용
 if run_button and uploaded_zip:
+    # 1. 엑셀 ZIP 처리
     temp_dir = tempfile.mkdtemp()
     szj_list, syg_list, djg_list = [], [], []
-
     with zipfile.ZipFile(uploaded_zip, "r") as z:
         z.extractall(temp_dir)
-
-    # ✅ 하위 폴더 포함 모든 .xlsx 탐색
     excel_files = []
     for root, _, files in os.walk(temp_dir):
         for f in files:
             if f.lower().endswith(".xlsx"):
                 excel_files.append(os.path.join(root, f))
-
     for path in excel_files:
         try:
             xls = pd.ExcelFile(path)
             df = xls.parse(xls.sheet_names[0]).fillna("")
             name = extract_identifier(df)
-            
-            # 토지면적과 지목 정보 추출
             land_area = extract_land_area(df)
             land_type = extract_land_type(df)
-
             szj_sec, has_szj = extract_section_range(df, "소유지분현황", ["소유권", "저당권"], match_fn=keyword_match_partial)
             syg_sec, has_syg = extract_section_range(df, "소유권.*사항", ["저당권"], match_fn=keyword_match_exact)
             djg_sec, has_djg = extract_section_range(df, "3.(근)저당권및전세권등(을구)", ["참고", "비고", "총계", "전산자료"], match_fn=keyword_match_exact)
-
             if has_szj:
                 szj_df = extract_named_cols(szj_sec, ["등기명의인", "(주민)등록번호", "최종지분", "주소", "순위번호"])
-                
-                # 소유구분 열 추가
                 szj_df["소유구분"] = ""
-                
-                # 데이터 후처리 - 등기명의인과 주민등록번호 정리
                 for idx, row in szj_df.iterrows():
-                    # 소유구분 추출
                     if pd.notna(row["등기명의인"]):
                         ownership_type, clean_name = extract_ownership_type(str(row["등기명의인"]))
                         szj_df.at[idx, "소유구분"] = ownership_type
                         szj_df.at[idx, "등기명의인"] = clean_name.replace(" ", "")  # 등기명의인 띄어쓰기 제거
-                    
-                    # 등기명의인에서 주민번호 패턴이 있으면 분리
                     if pd.notna(row["등기명의인"]):
                         jumin = extract_jumin_number(str(row["등기명의인"]))
                         if jumin:
                             szj_df.at[idx, "(주민)등록번호"] = jumin
                             szj_df.at[idx, "등기명의인"] = str(row["등기명의인"]).replace(jumin, "").strip().replace(" ", "")  # 띄어쓰기 제거
-
-                    # 최종지분과 주소 추가 정리
                     address_text = str(row["주소"]).strip()
                     jibun_text = str(row["최종지분"]).strip()
-                    
-                    # 주소에서 단독소유 또는 지분 패턴 찾기
                     if pd.notna(row["주소"]) and is_jibun_pattern(address_text):
                         jibun_in_address = extract_jibun(address_text)
                         if jibun_in_address:
@@ -991,23 +1085,18 @@ if run_button and uploaded_zip:
                                 szj_df.at[idx, "최종지분"] = jibun_in_address
                             # 주소에서는 지분 정보 제거
                             szj_df.at[idx, "주소"] = address_text.replace(jibun_in_address, "").strip()
-                    
-                    # 최종지분에 주소 패턴 찾기
                     if pd.notna(row["최종지분"]) and is_address_pattern(jibun_text):
                         # 주소 필드가 비어있거나 최종지분의 텍스트가 더 길면(상세 주소일 가능성)
                         if not address_text or (len(jibun_text) > len(address_text)):
                             szj_df.at[idx, "주소"] = jibun_text
                             szj_df.at[idx, "최종지분"] = ""
-                
                 # 마지막 검증 - 단독소유 확인
                 for idx, row in szj_df.iterrows():
                     address_text = str(row["주소"]).strip()
                     if "단독" in address_text and "단독소유" not in str(row["최종지분"]):
                         # 단독 텍스트가 주소에 있고 최종지분에 없으면 이동
                         szj_df.at[idx, "최종지분"] = "단독소유"
-                        # 주소에서는 '단독' 또는 '단독소유' 제거
                         szj_df.at[idx, "주소"] = re.sub(r'단독(?:소유)?', '', address_text).strip()
-                
                 # 최종지분에서 주소 정보 제거하기
                 for idx, row in szj_df.iterrows():
                     jibun_text = str(row["최종지분"]).strip()
@@ -1028,11 +1117,9 @@ if run_button and uploaded_zip:
                                     if str(row["주소"]).strip() == "":
                                         szj_df.at[idx, "주소"] = jibun_text
                                     szj_df.at[idx, "최종지분"] = ""
-                
                 # 토지면적 열 추가
                 szj_df["지목"] = land_type      # 지목 열 추가
                 szj_df["토지면적"] = land_area
-                
                 # 소유면적 계산 및 열 추가
                 szj_df["지분면적"] = None
                 for idx, row in szj_df.iterrows():
@@ -1044,7 +1131,6 @@ if run_button and uploaded_zip:
                             szj_df.at[idx, "지분면적"] = f"{ownership_area:.4f}"
                     except Exception as e:
                         pass  # 변환 중 오류 발생시 None 값 유지
-                
                 # 최종지분 수치화 열 추가
                 szj_df["최종지분 수치화"] = None
                 for idx, row in szj_df.iterrows():
@@ -1054,7 +1140,6 @@ if run_button and uploaded_zip:
                             szj_df.at[idx, "최종지분 수치화"] = jibun_decimal
                     except Exception as e:
                         pass  # 변환 중 오류 발생시 None 값 유지
-                
                 # 열 순서 재배치
                 szj_df.insert(0, "토지주소", name)
                 columns = ["토지주소", "등기명의인", "소유구분", "(주민)등록번호", "주소", "순위번호", "최종지분", "최종지분 수치화", "지목", "토지면적", "지분면적"]
@@ -1065,14 +1150,12 @@ if run_button and uploaded_zip:
                 # "기록없음" 케이스에도 동일한 컬럼 구조 유지
                 szj_list.append(pd.DataFrame([[name, "기록없음", "", "", "", "", "", "", land_type, land_area, "", "없음"]], 
                                              columns=["토지주소", "등기명의인", "소유구분", "(주민)등록번호", "주소", "순위번호", "최종지분", "최종지분 수치화", "지목", "토지면적", "지분면적", "그룹정보"]))
-
             if has_syg:
                 syg_df = extract_precise_named_cols(syg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
                 syg_df.insert(0, "토지주소", name)
                 syg_list.append(syg_df)
             else:
                 syg_list.append(pd.DataFrame([[name, "기록없음"]], columns=["토지주소", "순위번호"]))
-
             if has_djg:
                 djg_df = extract_precise_named_cols(djg_sec, ["순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자"])
                 
@@ -1103,7 +1186,7 @@ if run_button and uploaded_zip:
                                            columns=["토지주소", "순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자", "근저당권자", "지상권자"]))
 
         except Exception as e:
-            pass  # 또는 logging.warning(...) 등으로 로깅만
+            pass
     wb = Workbook()
     for sheetname, data in zip(
         ["1. 소유지분현황 (갑구)", "2. 소유권사항 (갑구)", "3. 저당권사항 (을구)"],
@@ -1133,6 +1216,7 @@ if run_button and uploaded_zip:
                 }
                 df = df.drop(columns=["그룹정보"])  # 그룹정보 열 제거
                 create_grouped_headers(ws, df, group_structure)
+                apply_top_border_on_change(ws, key_column_letter='A', start_row=3)
             else:
                 df = df.drop(columns=["그룹정보"])  # 그룹정보 열 제거
                 for r in dataframe_to_rows(df, index=False, header=True):
@@ -1157,6 +1241,7 @@ if run_button and uploaded_zip:
                 ws.append(r)
             # Headers styling
             style_header_row(ws)
+            apply_top_border_on_change(ws, key_column_letter='A', start_row=2)
         else:
             ws.append(["기록없음"])
             # 데이터가 없는 경우에도 헤더 스타일 적용
@@ -1165,5 +1250,29 @@ if run_button and uploaded_zip:
     wb.remove(wb["Sheet"])
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         wb.save(tmp.name)
-        st.success("✅ 분석 완료! 다운로드 버튼을 클릭하세요.")
-        st.download_button("📥 결과 다운로드", data=open(tmp.name, "rb"), file_name="등기사항_통합_시트별구성.xlsx")
+        excel_result_path = tmp.name
+
+    # 2. PDF ZIP 처리 (있을 때만)
+    pdf_result_path = None
+    if uploaded_pdf_zip:
+        temp_pdf_dir = tempfile.mkdtemp()
+        temp_pdf_zip_path = os.path.join(temp_pdf_dir, "input_pdf.zip")
+        with open(temp_pdf_zip_path, "wb") as f:
+            f.write(uploaded_pdf_zip.read())
+        extract_folder = os.path.join(temp_pdf_dir, "extracted")
+        os.makedirs(extract_folder, exist_ok=True)
+        pdf_result_path = os.path.join(temp_pdf_dir, "processed_result_pdf.zip")
+        extract_and_process_pdf_zip(temp_pdf_zip_path, extract_folder, pdf_result_path)
+
+    # 3. 통합 결과 ZIP 생성 및 다운로드 버튼
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as final_zip:
+        with zipfile.ZipFile(final_zip.name, 'w') as z:
+            z.write(excel_result_path, arcname="등기사항_통합_시트별구성.xlsx")
+            if pdf_result_path and os.path.exists(pdf_result_path):
+                z.write(pdf_result_path, arcname="PDF_파일명_일괄변경_결과.zip")
+        st.success("✅ 분석 완료! 아래에서 통합 결과 파일을 다운로드하세요.")
+        with open(final_zip.name, "rb") as f:
+            st.download_button("📥 통합 결과 ZIP 다운로드 (엑셀+PDF)", data=f, file_name="통합_결과.zip")
+
+elif run_button and (not uploaded_zip):
+    st.warning("엑셀 ZIP 파일을 업로드해야 분석이 가능합니다.")

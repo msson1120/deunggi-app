@@ -1229,7 +1229,7 @@ if run_button and uploaded_zip:
             
             if sheetname == "3. 저당권사항 (을구)":
                 if "순위번호" in df.columns and "등기목적" in df.columns:
-                    df = df.rename(columns={"순위번호": "등기목적"})
+                    df = df.rename(columns={"순위번호": "기록유무"})
                     # 기록유무에 등기목적 값만 표시 (등기목적이 비어있으면 "기록없음")
                     df["기록유무"] = df["등기목적"].apply(
                         lambda x: x if pd.notna(x) and str(x).strip() and str(x).strip() != "기록없음"

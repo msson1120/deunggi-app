@@ -90,17 +90,33 @@ def process_pdf_files(folder_path):
     """
     success_count = 0
     failure_count = 0
-    error_details = []
+    error_summary = {}
+    successful_samples = []
+    failed_samples = []
     
-    for filename in os.listdir(folder_path):
+    total_files = len([f for f in os.listdir(folder_path) if f.lower().endswith(".pdf")])
+    
+    # 진행률 표시용
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, filename in enumerate(os.listdir(folder_path)):
         if filename.lower().endswith(".pdf"):
+            # 진행률 업데이트
+            progress = (i + 1) / total_files
+            progress_bar.progress(progress)
+            status_text.text(f"처리 중... {i + 1}/{total_files} ({progress:.1%})")
+            
             full_path = os.path.join(folder_path, filename)
             try:
                 reader = PdfReader(full_path)
                 
                 # PDF가 비어있는지 확인
                 if len(reader.pages) == 0:
-                    error_details.append(f"❌ {filename}: PDF 페이지가 없습니다")
+                    error_type = "PDF 페이지 없음"
+                    error_summary[error_type] = error_summary.get(error_type, 0) + 1
+                    if len(failed_samples) < 5:
+                        failed_samples.append(f"{filename} - {error_type}")
                     failure_count += 1
                     continue
                     
@@ -108,7 +124,10 @@ def process_pdf_files(folder_path):
                 
                 # 텍스트 추출 실패 확인
                 if not first_page_text or first_page_text.strip() == "":
-                    error_details.append(f"❌ {filename}: PDF에서 텍스트 추출 실패")
+                    error_type = "텍스트 추출 실패"
+                    error_summary[error_type] = error_summary.get(error_type, 0) + 1
+                    if len(failed_samples) < 5:
+                        failed_samples.append(f"{filename} - {error_type}")
                     failure_count += 1
                     continue
 
@@ -123,32 +142,71 @@ def process_pdf_files(folder_path):
                     if not os.path.exists(new_path):
                         os.rename(full_path, new_path)
                         success_count += 1
-                        st.write(f"✅ {filename} → {new_filename} ({pattern_type})")
+                        if len(successful_samples) < 5:
+                            successful_samples.append(f"{filename} → {new_filename} ({pattern_type})")
                     else:
-                        error_details.append(f"⚠️ {filename}: {new_filename} 파일명이 이미 존재합니다")
+                        error_type = "파일명 중복"
+                        error_summary[error_type] = error_summary.get(error_type, 0) + 1
+                        if len(failed_samples) < 5:
+                            failed_samples.append(f"{filename} - {error_type}")
                         failure_count += 1
                 else:
-                    # 더 상세한 디버깅 정보 제공
-                    error_details.append(f"❌ {filename}: 주소 패턴을 찾을 수 없습니다")
-                    
-                    # 첫 200자 정도의 텍스트를 표시해서 디버깅에 도움
-                    preview_text = first_page_text[:200].replace('\n', ' ')
-                    error_details.append(f"   📄 PDF 내용 미리보기: {preview_text}...")
+                    error_type = "주소 패턴 미발견"
+                    error_summary[error_type] = error_summary.get(error_type, 0) + 1
+                    if len(failed_samples) < 5:
+                        failed_samples.append(f"{filename} - {error_type}")
                     failure_count += 1
                     
             except Exception as e:
-                error_details.append(f"❌ {filename}: 처리 중 오류 발생 - {str(e)}")
+                error_type = f"처리 오류: {type(e).__name__}"
+                error_summary[error_type] = error_summary.get(error_type, 0) + 1
+                if len(failed_samples) < 5:
+                    failed_samples.append(f"{filename} - {str(e)[:50]}...")
                 failure_count += 1
     
-    # 결과 요약 출력
-    st.write(f"📊 **PDF 파일명 변경 결과**")
-    st.write(f"- ✅ 성공: {success_count}개")
-    st.write(f"- ❌ 실패: {failure_count}개")
+    # 진행률 바 완료
+    progress_bar.progress(1.0)
+    status_text.text("처리 완료!")
     
-    if error_details:
-        st.write("**⚠️ 상세 오류 내역:**")
-        for detail in error_details:
-            st.write(detail)
+    # 결과 요약 출력
+    st.write("---")
+    st.write(f"## 📊 PDF 파일명 변경 결과")
+    
+    # 성공/실패 통계
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("✅ 성공", success_count)
+    with col2:
+        st.metric("❌ 실패", failure_count)
+    with col3:
+        st.metric("📁 전체", total_files)
+    
+    # 성공률 표시
+    success_rate = (success_count / total_files * 100) if total_files > 0 else 0
+    st.write(f"**성공률: {success_rate:.1f}%**")
+    
+    # 성공 사례 샘플 (최대 5개)
+    if successful_samples:
+        st.write("### ✅ 성공 사례 (샘플)")
+        for sample in successful_samples:
+            st.write(f"- {sample}")
+        if success_count > 5:
+            st.write(f"... 외 {success_count - 5}개 더")
+    
+    # 실패 유형별 요약
+    if error_summary:
+        st.write("### ❌ 실패 유형별 통계")
+        for error_type, count in error_summary.items():
+            percentage = (count / failure_count * 100) if failure_count > 0 else 0
+            st.write(f"- **{error_type}**: {count}개 ({percentage:.1f}%)")
+        
+        # 실패 사례 샘플 (최대 5개)
+        if failed_samples:
+            st.write("### 🔍 실패 사례 (샘플)")
+            for sample in failed_samples:
+                st.write(f"- {sample}")
+            if failure_count > 5:
+                st.write(f"... 외 {failure_count - 5}개 더")
     
     return success_count, failure_count
 
@@ -1125,14 +1183,42 @@ if run_button and uploaded_zip:
     # 1. 엑셀 ZIP 처리
     temp_dir = tempfile.mkdtemp()
     szj_list, syg_list, djg_list = [], [], []
+    
+    # ZIP 파일 압축 해제
     with zipfile.ZipFile(uploaded_zip, "r") as z:
         z.extractall(temp_dir)
+    
+    # 엑셀 파일 목록 생성
     excel_files = []
     for root, _, files in os.walk(temp_dir):
         for f in files:
             if f.lower().endswith(".xlsx"):
                 excel_files.append(os.path.join(root, f))
-    for path in excel_files:
+    
+    # UI 요약 통계 변수 (기존 로직과 별도로 관리)
+    excel_success_count = 0
+    excel_failure_count = 0
+    excel_error_summary = {}
+    excel_successful_samples = []
+    excel_failed_samples = []
+    
+    total_excel_files = len(excel_files)
+    
+    if total_excel_files > 0:
+        # 진행률 표시용 UI
+        excel_progress_bar = st.progress(0)
+        excel_status_text = st.empty()
+        st.write(f"## 📊 엑셀 파일 변환 진행 중...")
+    
+    # 기존 엑셀 처리 로직 (절대 변경하지 않음)
+    for i, path in enumerate(excel_files):
+        # UI 진행률 업데이트만 추가
+        if total_excel_files > 0:
+            progress = (i + 1) / total_excel_files
+            excel_progress_bar.progress(progress)
+            excel_status_text.text(f"엑셀 처리 중... {i + 1}/{total_excel_files} ({progress:.1%})")
+        
+        file_name = os.path.basename(path)
         try:
             xls = pd.ExcelFile(path)
             df = xls.parse(xls.sheet_names[0]).fillna("")
@@ -1142,6 +1228,24 @@ if run_button and uploaded_zip:
             szj_sec, has_szj = extract_section_range(df, "소유지분현황", ["소유권", "저당권"], match_fn=keyword_match_partial)
             syg_sec, has_syg = extract_section_range(df, "소유권.*사항", ["저당권"], match_fn=keyword_match_exact)
             djg_sec, has_djg = extract_section_range(df, "3.(근)저당권및전세권등(을구)", ["참고", "비고", "총계", "전산자료"], match_fn=keyword_match_exact)
+            
+            # UI 통계용 처리 결과 분류 (기존 로직에 영향 없음)
+            sections_found = []
+            if has_szj: sections_found.append("소유지분현황")
+            if has_syg: sections_found.append("소유권사항") 
+            if has_djg: sections_found.append("저당권사항")
+            
+            if sections_found:
+                excel_success_count += 1
+                if len(excel_successful_samples) < 5:
+                    excel_successful_samples.append(f"{file_name} → {name} (섹션: {', '.join(sections_found)})")
+            else:
+                error_type = "필요 섹션 미발견"
+                excel_error_summary[error_type] = excel_error_summary.get(error_type, 0) + 1
+                if len(excel_failed_samples) < 5:
+                    excel_failed_samples.append(f"{file_name} → {name} ({error_type})")
+                excel_failure_count += 1
+            
             if has_szj:
                 szj_df = extract_named_cols(szj_sec, ["등기명의인", "(주민)등록번호", "최종지분", "주소", "순위번호"])
                 szj_df["소유구분"] = ""
@@ -1266,7 +1370,59 @@ if run_button and uploaded_zip:
                                            columns=["토지주소", "순위번호", "등기목적", "접수정보", "주요등기사항", "대상소유자", "근저당권자", "지상권자"]))
 
         except Exception as e:
-            pass
+            # UI 통계용 오류 카운팅 (기존 로직에 영향 없음)
+            error_type = f"파일 처리 오류: {type(e).__name__}"
+            excel_error_summary[error_type] = excel_error_summary.get(error_type, 0) + 1
+            if len(excel_failed_samples) < 5:
+                excel_failed_samples.append(f"{file_name} - {str(e)[:50]}...")
+            excel_failure_count += 1
+    
+    # UI 진행률 바 완료 및 결과 요약 표시
+    if total_excel_files > 0:
+        excel_progress_bar.progress(1.0)
+        excel_status_text.text("엑셀 처리 완료!")
+        
+        # 엑셀 처리 결과 요약 출력
+        st.write("---")
+        st.write(f"## 📊 엑셀 파일 변환 결과")
+        
+        # 성공/실패 통계
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("✅ 성공", excel_success_count)
+        with col2:
+            st.metric("❌ 실패", excel_failure_count)
+        with col3:
+            st.metric("📁 전체", total_excel_files)
+        
+        # 성공률 표시
+        excel_success_rate = (excel_success_count / total_excel_files * 100) if total_excel_files > 0 else 0
+        st.write(f"**성공률: {excel_success_rate:.1f}%**")
+        
+        # 성공 사례 샘플 (최대 5개)
+        if excel_successful_samples:
+            st.write("### ✅ 성공 사례 (샘플)")
+            for sample in excel_successful_samples:
+                st.write(f"- {sample}")
+            if excel_success_count > 5:
+                st.write(f"... 외 {excel_success_count - 5}개 더")
+        
+        # 실패 유형별 요약
+        if excel_error_summary:
+            st.write("### ❌ 실패 유형별 통계")
+            for error_type, count in excel_error_summary.items():
+                percentage = (count / excel_failure_count * 100) if excel_failure_count > 0 else 0
+                st.write(f"- **{error_type}**: {count}개 ({percentage:.1f}%)")
+            
+            # 실패 사례 샘플 (최대 5개)
+            if excel_failed_samples:
+                st.write("### 🔍 실패 사례 (샘플)")
+                for sample in excel_failed_samples:
+                    st.write(f"- {sample}")
+                if excel_failure_count > 5:
+                    st.write(f"... 외 {excel_failure_count - 5}개 더")
+    else:
+        st.warning("업로드된 ZIP 파일에 Excel 파일(.xlsx)이 없습니다.")
     wb = Workbook()
     for sheetname, data in zip(
         ["1. 소유지분현황 (갑구)", "2. 소유권사항 (갑구)", "3. 저당권사항 (을구)"],

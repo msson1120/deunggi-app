@@ -51,24 +51,35 @@ output_folder = tempfile.mkdtemp()
 # 기존 패턴 (충청남도 서산시 대산읍 전용)
 pattern_specific = re.compile(r'\[토지\]\s*(충청남도\s*서산시\s*대산읍\s*[가-힣]+리)\s*(\d+(-\d+)?)')
 
-# 일반적인 패턴 (모든 지역 대응)
-pattern_general = re.compile(r'\[토지\]\s*([가-힣]+[도시군구]\s*[가-힣]+[시군구]\s*[가-힣]+[읍면동]\s*[가-힣]+리)\s*(\d+(-\d+)?)')
+# 동/리로 끝나는 일반적인 패턴 (가장 많이 사용됨)
+pattern_dong_ri = re.compile(r'\[토지\]\s*([가-힣]+[도시군구광역]\s*[가-힣]+[시군구]\s*[가-힣]+[읍면동리])\s*(\d+(?:-\d+)?)')
 
-# 더 유연한 패턴 (공백과 특수문자 고려)
-pattern_flexible = re.compile(r'\[토지\][\s]*([가-힣\s]+[도시군구][\s]*[가-힣\s]+[시군구][\s]*[가-힣\s]+[읍면동][\s]*[가-힣\s]+리)[\s]*(\d+(?:-\d+)?)')
+# 더 구체적인 패턴들
+pattern_gwangyeoksi = re.compile(r'\[토지\]\s*([가-힣]+광역시\s*[가-힣]+구\s*[가-힣]+동)\s*(\d+(?:-\d+)?)')
+pattern_si_gu_dong = re.compile(r'\[토지\]\s*([가-힣]+시\s*[가-힣]+구\s*[가-힣]+동)\s*(\d+(?:-\d+)?)')
+pattern_gun_eup_ri = re.compile(r'\[토지\]\s*([가-힣]+[도]\s*[가-힣]+[군]\s*[가-힣]+[읍면]\s*[가-힣]+리)\s*(\d+(?:-\d+)?)')
+
+# 가장 유연한 패턴 (공백과 특수문자 고려)
+pattern_flexible = re.compile(r'\[토지\][\s]*([가-힣\s]+[도시군구광역][\s]*[가-힣\s]+[시군구][\s]*[가-힣\s]+[읍면동리])[\s]*(\d+(?:-\d+)?)')
 
 def extract_address_from_pdf_text(text):
     """
     PDF 텍스트에서 주소를 추출하는 함수 (여러 패턴 시도)
     """
-    patterns = [pattern_specific, pattern_general, pattern_flexible]
+    patterns = [
+        (pattern_specific, "특정패턴(서산)"),
+        (pattern_gwangyeoksi, "광역시패턴"),
+        (pattern_si_gu_dong, "시구동패턴"),
+        (pattern_gun_eup_ri, "군읍리패턴"),
+        (pattern_dong_ri, "동리패턴"),
+        (pattern_flexible, "유연패턴")
+    ]
     
-    for i, pattern in enumerate(patterns):
+    for pattern, pattern_type in patterns:
         match = pattern.search(text)
         if match:
             address = match.group(1).replace(" ", "")  # 공백 제거
             lot_no = match.group(2)
-            pattern_type = ["특정패턴(서산)", "일반패턴", "유연패턴"][i]
             return address, lot_no, pattern_type
     
     return None, None, None

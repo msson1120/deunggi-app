@@ -1457,6 +1457,9 @@ if run_button and uploaded_zip:
             cols.insert(idx + 1, "산")
             df = df[cols]
             
+            # 토지주소 기준으로 정렬 (필터 적용 시 테두리 유지를 위해)
+            df = df.sort_values(by="토지주소", ascending=True).reset_index(drop=True)
+            
             # 소유지분현황(갑구) 시트에는 그룹 헤더 적용
             if any(df["그룹정보"] == "있음"):
                 # 그룹 구조 정의 - "산" 열 추가
@@ -1477,6 +1480,9 @@ if run_button and uploaded_zip:
         elif data:
             df = pd.concat(data, ignore_index=True)
             df.reset_index(drop=True, inplace=True)
+            
+            # 토지주소 기준으로 정렬 (필터 적용 시 테두리 유지를 위해)
+            df = df.sort_values(by="토지주소", ascending=True).reset_index(drop=True)
             
             if sheetname == "3. 저당권사항 (을구)":
                 if "순위번호" in df.columns and "등기목적" in df.columns:

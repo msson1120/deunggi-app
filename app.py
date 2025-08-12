@@ -572,12 +572,7 @@ def extract_named_cols(section, col_keywords):
         if "등기명의인" in row_dict:
             owner_text = str(row_dict["등기명의인"]).strip()
             
-            # 주민등록번호 분리
-            if "(주민)등록번호" in col_keywords:
-                jumin = extract_jumin_number(owner_text)
-                if jumin:
-                    row_dict["(주민)등록번호"] = jumin
-                    owner_text = owner_text.replace(jumin, "").strip()
+            # 주민등록번호 분리 로직 제거 - 기존 값만 유지
             
             # 지분 정보 분리
             if "최종지분" in col_keywords and not row_dict.get("최종지분"):

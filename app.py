@@ -85,7 +85,9 @@ def extract_address_from_pdf_text(text):
     for pattern, pattern_type in patterns:
         match = pattern.search(text)
         if match:
-            address = match.group(1).replace(" ", "")  # 공백 제거
+            address = match.group(1)
+            # 연속된 공백을 하나의 공백으로 통일
+            address = re.sub(r'\s+', ' ', address)
             lot_no = match.group(2)
             
             # 산 지번의 경우 파일명에 "산" 포함
@@ -333,14 +335,18 @@ def extract_identifier(df):
             for j in range(i+1, min(i+10, len(df))):
                 content = " ".join(str(cell) for cell in df.iloc[j] if pd.notna(cell))
                 if content.strip().startswith(("[토지]", "[건물]")):
-                    return content.strip()
+                    # 연속된 공백을 하나의 공백으로 통일
+                    content = re.sub(r'\s+', ' ', content.strip())
+                    return content
             break
     
     # 고유번호 이후에 [토지] 또는 [건물]이 없는 경우, 전체 데이터에서 찾기
     for i in range(len(df)):
         row_text = " ".join(str(cell) for cell in df.iloc[i] if pd.notna(cell))
         if row_text.strip().startswith(("[토지]", "[건물]")):
-            return row_text.strip()
+            # 연속된 공백을 하나의 공백으로 통일
+            row_text = re.sub(r'\s+', ' ', row_text.strip())
+            return row_text
             
     return "알수없음"
 

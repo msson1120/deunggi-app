@@ -1241,7 +1241,7 @@ if run_button and uploaded_zip:
             land_area = extract_land_area(df)
             land_type = extract_land_type(df)
             szj_sec, has_szj = extract_section_range(df, "소유지분현황", ["소유권", "저당권"], match_fn=keyword_match_partial)
-            syg_sec, has_syg = extract_section_range(df, "소유권.*사항", ["저당권"], match_fn=keyword_match_exact)
+            syg_sec, has_syg = extract_section_range(df, "소유지분을제외한소유권에관한사항", ["저당권"], match_fn=keyword_match_partial)
             djg_sec, has_djg = extract_section_range(df, "3.(근)저당권및전세권등(을구)", ["참고", "비고", "총계", "전산자료"], match_fn=keyword_match_exact)
             
             # UI 통계용 처리 결과 분류 (기존 로직에 영향 없음)

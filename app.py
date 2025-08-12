@@ -572,7 +572,12 @@ def extract_named_cols(section, col_keywords):
         if "등기명의인" in row_dict:
             owner_text = str(row_dict["등기명의인"]).strip()
             
-            # 주민등록번호 분리 로직 제거 - 기존 값만 유지
+            # 주민등록번호 분리
+            if "(주민)등록번호" in col_keywords:
+                jumin = extract_jumin_number(owner_text)
+                if jumin:
+                    row_dict["(주민)등록번호"] = jumin
+                    owner_text = owner_text.replace(jumin, "").strip()
             
             # 지분 정보 분리
             if "최종지분" in col_keywords and not row_dict.get("최종지분"):
@@ -1270,7 +1275,11 @@ if run_button and uploaded_zip:
                         ownership_type, clean_name = extract_ownership_type(str(row["등기명의인"]))
                         szj_df.at[idx, "소유구분"] = ownership_type
                         szj_df.at[idx, "등기명의인"] = clean_name.replace(" ", "")  # 등기명의인 띄어쓰기 제거
-                    # 주민등록번호 추출 로직 제거 - 기존 값만 유지
+                    if pd.notna(row["등기명의인"]):
+                        jumin = extract_jumin_number(str(row["등기명의인"]))
+                        if jumin:
+                            szj_df.at[idx, "(주민)등록번호"] = jumin
+                            szj_df.at[idx, "등기명의인"] = str(row["등기명의인"]).replace(jumin, "").strip().replace(" ", "")  # 띄어쓰기 제거
                     address_text = str(row["주소"]).strip()
                     jibun_text = str(row["최종지분"]).strip()
                     if pd.notna(row["주소"]) and is_jibun_pattern(address_text):

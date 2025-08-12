@@ -1275,11 +1275,7 @@ if run_button and uploaded_zip:
                         ownership_type, clean_name = extract_ownership_type(str(row["등기명의인"]))
                         szj_df.at[idx, "소유구분"] = ownership_type
                         szj_df.at[idx, "등기명의인"] = clean_name.replace(" ", "")  # 등기명의인 띄어쓰기 제거
-                    if pd.notna(row["등기명의인"]):
-                        jumin = extract_jumin_number(str(row["등기명의인"]))
-                        if jumin:
-                            szj_df.at[idx, "(주민)등록번호"] = jumin
-                            szj_df.at[idx, "등기명의인"] = str(row["등기명의인"]).replace(jumin, "").strip().replace(" ", "")  # 띄어쓰기 제거
+                    # 주민등록번호 추출 로직 제거 - 기존 값만 유지
                     address_text = str(row["주소"]).strip()
                     jibun_text = str(row["최종지분"]).strip()
                     if pd.notna(row["주소"]) and is_jibun_pattern(address_text):

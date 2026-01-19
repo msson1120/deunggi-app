@@ -22,14 +22,9 @@ st.title("🧾 (주)건화 등기부등본 통합분석기")
 # PDF 매뉴얼 토글
 with st.expander("📖 매뉴얼 보기", expanded=False):
     raw_pdf_url = "https://raw.githubusercontent.com/msson1120/deunggi-app/main/manual.pdf"
-
     st.markdown(f"[📄 매뉴얼 PDF 직접 다운로드]({raw_pdf_url})")
-    st.caption("※ 화면에 안 보이면 위 링크로 직접 열어주세요.")
+    st.info("미리보기는 환경에 따라 제한될 수 있어요. 위 링크로 열어주세요.")
 
-    st.components.v1.iframe(
-        f"https://docs.google.com/gview?url={raw_pdf_url}&embedded=true",
-        height=700,
-        use_container_width=True)
 
 
 st.markdown("""

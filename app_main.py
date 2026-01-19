@@ -21,12 +21,16 @@ st.title("🧾 (주)건화 등기부등본 통합분석기")
 
 # PDF 매뉴얼 토글
 with st.expander("📖 매뉴얼 보기", expanded=False):
-    st.markdown("[매뉴얼 PDF 직접 다운로드](https://raw.githubusercontent.com/msson1120/deunggi-app/main/%EB%93%B1%EA%B8%B0%EB%B6%80%EB%93%B1%EB%B3%B8%EC%9E%90%EB%8F%99%EC%A0%95%EB%A6%AC%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8_Manual.pdf)")
+    raw_pdf_url = "https://raw.githubusercontent.com/msson1120/deunggi-app/main/manual.pdf"
+
+    st.markdown(f"[📄 매뉴얼 PDF 직접 다운로드]({raw_pdf_url})")
+    st.caption("※ 화면에 안 보이면 위 링크로 직접 열어주세요.")
+
     st.components.v1.iframe(
-        "https://docs.google.com/gview?url=https://raw.githubusercontent.com/msson1120/deunggi-app/main/%EB%93%B1%EA%B8%B0%EB%B6%80%EB%93%B1%EB%B3%B8%EC%9E%90%EB%8F%99%EC%A0%95%EB%A6%AC%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8_Manual.pdf&embedded=true",
-        height=600,
-        width=1200
-    )
+        f"https://docs.google.com/gview?url={raw_pdf_url}&embedded=true",
+        height=700,
+        use_container_width=True)
+
 
 st.markdown("""
 ### 서비스 이용 안내

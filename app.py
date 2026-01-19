@@ -19,14 +19,19 @@ if password != '126791':
 
 st.title("🧾 (주)건화 등기부등본 통합분석기")
 
-# PDF 매뉴얼 토글
+# PDF 매뉴얼 (다운로드 전용 – 가장 안정)
+# ============================
 with st.expander("📖 매뉴얼 보기", expanded=False):
-    st.markdown("[매뉴얼 PDF 직접 다운로드](https://raw.githubusercontent.com/msson1120/deunggi-app/main/%EB%93%B1%EA%B8%B0%EB%B6%80%EB%93%B1%EB%B3%B8%EC%9E%90%EB%8F%99%EC%A0%95%EB%A6%AC%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8_Manual.pdf)")
-    st.components.v1.iframe(
-        "https://docs.google.com/gview?url=https://raw.githubusercontent.com/msson1120/deunggi-app/main/%EB%93%B1%EA%B8%B0%EB%B6%80%EB%93%B1%EB%B3%B8%EC%9E%90%EB%8F%99%EC%A0%95%EB%A6%AC%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8_Manual.pdf&embedded=true",
-        height=600,
-        width=1200
-    )
+    if os.path.exists(MANUAL_PDF):
+        download_button(
+            label="📄 PDF 매뉴얼 다운로드",
+            file_path=MANUAL_PDF,
+            mime="application/pdf",
+            download_name="등기부등본_자동통합작성_매뉴얼.pdf"
+        )
+        st.caption("※ 다운로드 후 브라우저 또는 PDF 뷰어에서 열어주세요.")
+    else:
+        st.warning("매뉴얼 PDF 파일이 존재하지 않습니다. (assets/manual.pdf 확인)")
 
 st.markdown("""
 ### 서비스 이용 안내

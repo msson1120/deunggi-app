@@ -10,7 +10,13 @@ from openpyxl.styles import Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from PyPDF2 import PdfReader
 
-st.set_page_config(page_title="(주)건화 등기부등본 Excel 통합기", layout="wide")
+# ============================
+# 기본 설정
+# ============================
+st.set_page_config(
+    page_title="(주)건화 등기부등본 Excel 통합기",
+    layout="wide"
+)
 
 password = st.text_input('비밀번호를 입력하세요', type='password')
 if password != '126791':
@@ -19,7 +25,35 @@ if password != '126791':
 
 st.title("🧾 (주)건화 등기부등본 통합분석기")
 
-# PDF 매뉴얼 (다운로드 전용 – 가장 안정)
+# ============================
+# 경로 정의 (★ 핵심 수정 포인트)
+# ============================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+MANUAL_PDF = os.path.join(ASSETS_DIR, "manual.pdf")
+
+# ============================
+# 공통 다운로드 유틸
+# ============================
+def download_button(label, file_path, mime, download_name=None):
+    if not os.path.exists(file_path):
+        st.error(f"파일이 없습니다: {os.path.basename(file_path)}")
+        st.caption(f"확인 경로: {file_path}")
+        return
+
+    with open(file_path, "rb") as f:
+        data = f.read()
+
+    st.download_button(
+        label=label,
+        data=data,
+        file_name=download_name or os.path.basename(file_path),
+        mime=mime,
+        use_container_width=True
+    )
+
+# ============================
+# PDF 매뉴얼 (다운로드 전용 – Streamlit Cloud 안정)
 # ============================
 with st.expander("📖 매뉴얼 보기", expanded=False):
     if os.path.exists(MANUAL_PDF):
@@ -27,11 +61,11 @@ with st.expander("📖 매뉴얼 보기", expanded=False):
             label="📄 PDF 매뉴얼 다운로드",
             file_path=MANUAL_PDF,
             mime="application/pdf",
-            download_name="등기부등본_자동통합작성_매뉴얼.pdf"
+            download_name="등기부등본_자동정리프로그램_Manual.pdf"
         )
         st.caption("※ 다운로드 후 브라우저 또는 PDF 뷰어에서 열어주세요.")
     else:
-        st.warning("매뉴얼 PDF 파일이 존재하지 않습니다. (assets/manual.pdf 확인)")
+        st.warning("assets/manual.pdf 파일을 찾을 수 없습니다.")
 
 st.markdown("""
 ### 서비스 이용 안내
@@ -41,6 +75,7 @@ st.markdown("""
 - 발급 시 **주요 등기사항 요약 페이지**를 반드시 포함해야 합니다.
 - 등기부 특성상 통합 과정에서 일부 주요 내용이 누락될 수 있으므로, **원본대조 검토**가 필요합니다.
 """)
+
 
 # 업로드창 2개로 분리 (엑셀 ZIP, PDF ZIP)
 uploaded_zip = st.file_uploader("📈 EXCEL.zip 파일을 업로드하세요 (내부에 .xlsx 파일 포함)", type=["zip"])
